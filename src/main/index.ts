@@ -64,6 +64,11 @@ const protocolDeps = {
   openPanel: openControlPanelExternal,
 };
 
+// Set the app name before anything reads userData paths. Without this,
+// Electron defaults to "Electron" in dev mode and the config/log dirs
+// land at ~/.config/Electron/ instead of ~/.config/murmur/.
+app.setName('murmur');
+
 // Secondary launches of `murmur://...` (triggered by clicking an OSC-8 link
 // while the app is running) should forward their URL to the first instance
 // instead of starting a new Electron process and then immediately exit. This
