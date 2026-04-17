@@ -39,15 +39,23 @@ if (-not (Test-Path $cliPath)) {
   Expand-Archive -Path $zipPath -DestinationPath $binDir -Force
   Remove-Item $zipPath -Force
 
+  # Recent whisper.cpp releases nest binaries inside a Release\ subfolder.
+  # Flatten so the .exe and DLLs sit at $binDir, matching the default config.
   if (-not (Test-Path $cliPath)) {
-    $found = Get-ChildItem -Path $binDir -Recurse -Filter 'whisper-cli.exe' -ErrorAction SilentlyContinue `
+    $nested = Get-ChildItem -Path $binDir -Directory -ErrorAction SilentlyContinue `
+      | Where-Object { Test-Path (Join-Path $_.FullName 'whisper-cli.exe') } `
       | Select-Object -First 1
-    if ($found) {
-      Write-Warning "whisper-cli.exe is in a subfolder: $($found.FullName)"
-      $cliPath = $found.FullName
-    } else {
-      throw 'Extracted archive does not contain whisper-cli.exe. Archive layout may have changed.'
+    if ($nested) {
+      Write-Host "[setup-whisper] flattening $($nested.Name)\ -> bin\whisper\"
+      Get-ChildItem -Path $nested.FullName -Force | ForEach-Object {
+        Move-Item -Path $_.FullName -Destination $binDir -Force
+      }
+      Remove-Item -Path $nested.FullName -Recurse -Force
     }
+  }
+
+  if (-not (Test-Path $cliPath)) {
+    throw 'Extracted archive does not contain whisper-cli.exe. Archive layout may have changed.'
   }
   Write-Host "[setup-whisper] whisper-cli.exe ready at $cliPath"
 } else {
