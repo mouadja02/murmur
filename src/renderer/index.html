@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>murmur</title>
+    <style>
+      body {
+        font-family: 'SF Mono', Consolas, ui-monospace, monospace;
+        background: #0a0a0a;
+        color: #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #brand {
+        font-size: 11px;
+        color: #555;
+        letter-spacing: 3px;
+        margin-bottom: 10px;
+      }
+      #status {
+        font-size: 18px;
+        font-weight: 500;
+        padding: 6px 14px;
+        border-radius: 6px;
+        background: #1a1a1a;
+        color: #9ca3af;
+      }
+      #status.recording {
+        color: #f87171;
+        background: #3f1515;
+      }
+      #status.transcribing {
+        color: #fbbf24;
+      }
+      #status.refining {
+        color: #60a5fa;
+      }
+      #status.injecting {
+        color: #a78bfa;
+      }
+      #status.done {
+        color: #34d399;
+      }
+      #status.error {
+        color: #f87171;
+      }
+      #hint {
+        margin-top: 12px;
+        font-size: 11px;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="brand">MURMUR</div>
+    <div id="status" class="idle">idle</div>
+    <div id="hint">Hold Ctrl+Shift+Space to record</div>
+    <script type="module" src="./index.js"></script>
+  </body>
+</html>
