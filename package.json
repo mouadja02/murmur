@@ -7,7 +7,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "dev": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs && electron .",
+    "dev": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs && electron . --",
     "build": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs",
     "check": "tsc --noEmit && biome check .",
     "format": "biome format --write .",

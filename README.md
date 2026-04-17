@@ -45,20 +45,20 @@ LM Studio:
 
 ```powershell
 # In LM Studio: load a model, click "Start Server" (port 1234)
-pnpm dev -- -- --provider openai-compat --base-url http://localhost:1234/v1 --model qwen3-4b
+pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qwen/qwen3-1.7b
 ```
 
 llama.cpp server:
 
 ```powershell
 # llama-server -m models/qwen3-4b.Q4_K_M.gguf --port 8080
-pnpm dev -- -- --provider openai-compat --base-url http://localhost:8080/v1 --model qwen3
+pnpm dev --provider openai-compat --base-url http://localhost:8080/v1 --model qwen3
 ```
 
 Generic OpenAI-compatible with API key:
 
 ```powershell
-pnpm dev -- -- --provider openai-compat --base-url http://localhost:5000/v1 --model my-model --api-key sk-xxx
+pnpm dev --provider openai-compat --base-url http://localhost:5000/v1 --model my-model --api-key sk-xxx
 ```
 
 ---
@@ -102,15 +102,13 @@ Murmur resolves configuration from three sources, in this precedence order:
 
 ### CLI flags
 
-Use either form:
+Just append flags after `pnpm dev`:
 
 ```powershell
-# = syntax (works without --)
-pnpm dev -- --provider=openai-compat --base-url=http://localhost:1234/v1 --model=qwen3-4b
-
-# space syntax (needs the extra -- so Electron stops parsing its own switches)
-pnpm dev -- -- --provider openai-compat --base-url http://localhost:1234/v1 --model qwen3-4b
+pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qwen/qwen3-1.7b
 ```
+
+(The `dev` script auto-injects the `--` separator that tells Electron to stop parsing its own switches, so the space-separated form Just Works. If you ever invoke `electron .` directly, prefer `--key=value` syntax to avoid Chromium's own command-line parser eating values.)
 
 | Flag | Purpose |
 | --- | --- |
