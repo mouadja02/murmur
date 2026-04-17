@@ -1,3 +1,5 @@
+import { startCapture, stopCapture } from './recorder.js';
+
 declare global {
   interface Window {
     murmur: {
@@ -17,12 +19,25 @@ window.murmur.onStatus((s) => {
   statusEl.className = s;
 });
 
-window.murmur.onStartRecording(() => {
-  console.log('[renderer] start-recording received');
+window.murmur.onStartRecording(async () => {
+  try {
+    await startCapture();
+  } catch (err) {
+    console.error('[renderer] startCapture failed:', err);
+  }
 });
 
-window.murmur.onStopRecording(() => {
-  console.log('[renderer] stop-recording received');
+window.murmur.onStopRecording(async () => {
+  try {
+    const buf = await stopCapture();
+    if (buf.byteLength > 0) {
+      window.murmur.sendAudioChunk(buf);
+    } else {
+      console.warn('[renderer] stop called with no audio captured');
+    }
+  } catch (err) {
+    console.error('[renderer] stopCapture failed:', err);
+  }
 });
 
 export {};
