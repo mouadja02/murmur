@@ -278,7 +278,7 @@ skills/
 ---
 name: code-prompt-engineer
 description: Refines voice input into a structured coding prompt for AI coding agents
-version: 0.1.0
+version: 0.1.1
 author: murmur-core
 triggers:
   apps:
