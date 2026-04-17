@@ -162,11 +162,59 @@ async function refresh() {
     state.skills = snap.skills;
     state.composedSystemPrompt = snap.composedSystemPrompt;
     state.providers = snap.providers;
+    state.overlay = snap.overlay ?? { visible: null };
     applyStateToDom();
+    applyOverlayStateToDom();
     setSaveStatus('');
   } catch (err) {
     toast(`Failed to load state: ${err.message}`, 'error');
   }
+}
+
+function applyOverlayStateToDom() {
+  const el = $('#overlay-state');
+  if (!el) return;
+  const visible = state.overlay?.visible;
+  if (visible === true) {
+    el.dataset.state = 'visible';
+    el.querySelector('.text').textContent = 'visible';
+  } else if (visible === false) {
+    el.dataset.state = 'hidden';
+    el.querySelector('.text').textContent = 'hidden';
+  } else {
+    el.dataset.state = 'unknown';
+    el.querySelector('.text').textContent = '—';
+  }
+  const showBtn = $('#btn-overlay-show');
+  const hideBtn = $('#btn-overlay-hide');
+  if (showBtn) showBtn.disabled = visible === true;
+  if (hideBtn) hideBtn.disabled = visible === false;
+}
+
+function wireOverlayControls() {
+  const showBtn = $('#btn-overlay-show');
+  const hideBtn = $('#btn-overlay-hide');
+  if (!showBtn || !hideBtn) return;
+  showBtn.addEventListener('click', async () => {
+    try {
+      const res = await api('POST', '/api/overlay/show');
+      state.overlay = { visible: res.visible };
+      applyOverlayStateToDom();
+      toast('Overlay shown', 'ok');
+    } catch (err) {
+      toast(`Could not show overlay: ${err.message}`, 'error');
+    }
+  });
+  hideBtn.addEventListener('click', async () => {
+    try {
+      const res = await api('POST', '/api/overlay/hide');
+      state.overlay = { visible: res.visible };
+      applyOverlayStateToDom();
+      toast('Overlay hidden', 'ok');
+    } catch (err) {
+      toast(`Could not hide overlay: ${err.message}`, 'error');
+    }
+  });
 }
 
 function _activeTab() {
@@ -449,4 +497,8 @@ wireWhisper();
 wireHotkeys();
 wirePaths();
 wireSaveAll();
+wireOverlayControls();
 refresh();
+setInterval(() => {
+  refresh().catch(() => {});
+}, 4000);

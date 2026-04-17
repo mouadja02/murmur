@@ -35,6 +35,17 @@ jobs:
           node-version: '20'
           cache: pnpm
 
+      # uiohook-napi and @nut-tree-fork/nut-js postinstall scripts download
+      # platform-specific prebuilts and link against system X11 libs on Linux.
+      # The GH Ubuntu image already has libx11 + libxtst preinstalled, but we
+      # pin them here to make the dependency explicit and surface any future
+      # regression immediately.
+      - name: Install Linux runtime deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libx11-6 libxtst6 libxkbcommon0
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         env:

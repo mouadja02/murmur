@@ -5,6 +5,18 @@ import type { Skill } from '../skills.js';
 
 const LABEL_WIDTH = 12;
 
+/**
+ * Emits an OSC-8 hyperlink escape sequence. Modern terminals (Windows Terminal,
+ * iTerm2, WezTerm, Alacritty, Kitty, VS Code's integrated terminal, …) render
+ * the label as a clickable link to `url`. Terminals that don't understand the
+ * sequence fall back to the plain label.
+ */
+export function hyperlink(url: string, label: string): string {
+  const OSC = '\u001b]8;;';
+  const ST = '\u001b\\';
+  return `${OSC}${url}${ST}${label}${OSC}${ST}`;
+}
+
 function row(label: string, value: string): string {
   return `  ${pc.dim(label.padEnd(LABEL_WIDTH))}${value}`;
 }
@@ -103,4 +115,53 @@ export function renderStatus(input: StatusInput): string {
 
 export function printStatus(input: StatusInput): void {
   process.stdout.write(renderStatus(input));
+}
+
+export interface ReadyBannerInput {
+  cfg: ResolvedConfig;
+  controlPanelUrl: string;
+}
+
+/**
+ * Rendered after Electron finishes bootstrap (preflight + window creation).
+ * Gives the user a dense, clickable "cockpit" line for the common commands.
+ *
+ * The Overlay links use the `murmur://` custom protocol — clicking them
+ * forwards to the running Electron instance via `second-instance` instead of
+ * opening a browser tab. The panel link is an http URL and intentionally
+ * opens the control panel in the browser.
+ */
+export function renderReadyBanner(input: ReadyBannerInput): string {
+  const { cfg, controlPanelUrl } = input;
+  const provider = PROVIDER_PRESETS[cfg.provider]?.displayName ?? cfg.provider;
+
+  const showLink = hyperlink('murmur://show', pc.green('show'));
+  const hideLink = hyperlink('murmur://hide', pc.yellow('hide'));
+  const toggleLink = hyperlink('murmur://toggle', pc.cyan('toggle'));
+  const panelLink = hyperlink(controlPanelUrl, pc.cyan(pc.underline(controlPanelUrl)));
+
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(`  ${pc.bold(pc.green('o'))} ${pc.bold('murmur is ready')}`);
+  lines.push(
+    row('Overlay', `${showLink}  ${pc.dim('/')}  ${hideLink}  ${pc.dim('/')}  ${toggleLink}`),
+  );
+  lines.push(row('Panel', panelLink));
+  lines.push(
+    row(
+      'Hotkeys',
+      `${pc.bold(cfg.hotkeyCombo)} ${pc.dim('(push-to-talk)')}  ${pc.dim('/')}  ${pc.bold(cfg.toggleHotkeyCombo)} ${pc.dim('(toggle)')}`,
+    ),
+  );
+  lines.push(row('LLM', `${pc.bold(provider)} ${pc.dim('/')} ${pc.bold(cfg.model)}`));
+  lines.push('');
+  lines.push(
+    `  ${pc.dim('Click a link above (Ctrl-click in some terminals). Overlay links stay in-app; the panel link opens in your browser.')}`,
+  );
+  lines.push('');
+  return lines.join('\n');
+}
+
+export function printReadyBanner(input: ReadyBannerInput): void {
+  process.stdout.write(renderReadyBanner(input));
 }

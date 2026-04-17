@@ -1,7 +1,11 @@
 node_modules/
 dist/
 logs/
-bin/
+# Ignore locally-downloaded whisper.cpp binaries from `pnpm setup:whisper`
+# but keep `bin/murmur.mjs` (the npm CLI entry) tracked.
+bin/whisper/
+bin/*/
+tmp-pack/
 .env
 *.log
 .DS_Store

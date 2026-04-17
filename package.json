@@ -1,10 +1,25 @@
 {
   "name": "murmur",
-  "version": "0.0.0",
-  "description": "Voice-first prompt engineering for vibe coders. Phase 0 spike.",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Voice-first prompt engineering for vibe coders. Floating overlay that turns your voice into clean, structured prompts using local Whisper + your own local LLM.",
+  "private": false,
   "type": "module",
   "main": "dist/main/index.js",
+  "bin": {
+    "murmur": "bin/murmur.mjs"
+  },
+  "files": [
+    "bin/murmur.mjs",
+    "dist/",
+    "scripts/setup-whisper.mjs",
+    "scripts/setup-whisper.ps1",
+    "skills/",
+    "docs/banner.svg",
+    "docs/architecture.svg",
+    "logo.svg",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "dev": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs && node scripts/dev-launch.mjs",
@@ -13,24 +28,55 @@
     "format": "biome format --write .",
     "test": "node --test",
     "test:ci": "pnpm build && node --test",
-    "setup:whisper": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-whisper.ps1"
+    "prepublishOnly": "pnpm run check && pnpm run test:ci",
+    "setup:whisper": "node ./scripts/setup-whisper.mjs"
+  },
+  "keywords": [
+    "voice",
+    "speech-to-text",
+    "whisper",
+    "prompt-engineering",
+    "overlay",
+    "electron",
+    "ollama",
+    "llm",
+    "llama.cpp",
+    "lm-studio",
+    "local-first",
+    "offline",
+    "dictation",
+    "cursor",
+    "vibe-coding"
+  ],
+  "author": {
+    "name": "Mouad Ja",
+    "email": "mouadpro02@gmail.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/mouadja02/murmur#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mouadja02/murmur.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mouadja02/murmur/issues"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "dotenv": "^17.4.2",
+    "electron": "^41.2.1",
+    "picocolors": "^1.1.1",
+    "prompts": "^2.4.2",
+    "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
     "@types/node": "^25.6.0",
     "@types/prompts": "^2.4.9",
-    "dotenv": "^17.4.2",
-    "electron": "^41.2.1",
     "typescript": "^6.0.3"
-  },
-  "dependencies": {
-    "@nut-tree-fork/nut-js": "^4.2.6",
-    "picocolors": "^1.1.1",
-    "prompts": "^2.4.2",
-    "uiohook-napi": "^1.5.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

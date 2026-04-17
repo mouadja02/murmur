@@ -17,11 +17,15 @@ concurrency:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
-  release:
-    name: Build & publish GitHub Release
+  github-release:
+    name: GitHub Release (Windows bundle)
     runs-on: windows-latest
+
+    outputs:
+      tag: ${{ steps.tag.outputs.name }}
 
     steps:
       - name: Resolve tag
@@ -71,17 +75,19 @@ jobs:
           $tag = "${{ steps.tag.outputs.name }}"
           $staging = "staging\murmur-$tag"
           New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item -Recurse bin       "$staging\bin"
           Copy-Item -Recurse dist      "$staging\dist"
           Copy-Item -Recurse scripts   "$staging\scripts"
           Copy-Item -Recurse skills    "$staging\skills" -ErrorAction SilentlyContinue
+          Copy-Item -Recurse docs      "$staging\docs" -ErrorAction SilentlyContinue
           Copy-Item package.json       $staging
           Copy-Item pnpm-lock.yaml     $staging
           Copy-Item README.md          $staging
+          Copy-Item LICENSE            $staging -ErrorAction SilentlyContinue
           Copy-Item logo.svg           $staging
           $zip = "murmur-$tag-win-x64.zip"
           Compress-Archive -Path "$staging\*" -DestinationPath $zip -Force
-          "ASSET_PATH=$zip"   | Out-File -FilePath $env:GITHUB_ENV -Append
-          "ASSET_NAME=$zip"   | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ASSET_PATH=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -91,3 +97,45 @@ jobs:
           generate_release_notes: true
           files: ${{ env.ASSET_PATH }}
           fail_on_unmatched_files: true
+
+  npm-publish:
+    name: npm publish
+    needs: github-release
+    runs-on: ubuntu-latest
+    # Skip this job if the NPM_TOKEN secret isn't configured. That way the
+    # workflow still cuts a GitHub Release even without npm credentials.
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.github-release.outputs.tag }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm
+        # `--access public` publishes scoped and unscoped packages publicly.
+        # `--no-git-checks` is needed because we're on a detached ref (the tag).
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::warning::NPM_TOKEN secret not set; skipping npm publish."
+            echo "          Add a token at https://github.com/mouadja02/murmur/settings/secrets/actions"
+            exit 0
+          fi
+          pnpm publish --access public --no-git-checks

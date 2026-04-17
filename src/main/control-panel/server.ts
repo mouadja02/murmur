@@ -26,6 +26,14 @@ export interface ServerDeps {
   onConfigUpdated: () => void;
   /** Probe the LLM provider with the current config. */
   testLlm: () => Promise<{ ok: boolean; message: string; latencyMs?: number }>;
+  /**
+   * Called by the control panel / terminal hyperlinks to toggle overlay visibility.
+   * Both are optional so the server can still boot without a main-process bridge
+   * (e.g. during tests). `isOverlayVisible` is used by the UI to render state.
+   */
+  showOverlay?: () => void;
+  hideOverlay?: () => void;
+  isOverlayVisible?: () => boolean;
 }
 
 export interface ServerHandle {
@@ -140,7 +148,53 @@ function stateSnapshot(deps: ServerDeps): Record<string, unknown> {
       displayName: preset.displayName,
       defaultBaseUrl: preset.defaultBaseUrl,
     })),
+    overlay: {
+      visible: deps.isOverlayVisible?.() ?? null,
+    },
   };
+}
+
+function sendHtmlConfirmation(
+  res: ServerResponse,
+  kind: 'shown' | 'hidden',
+  panelUrl: string,
+): void {
+  const title = kind === 'shown' ? 'Overlay shown' : 'Overlay hidden';
+  const body = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>${title} · Murmur</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; height: 100vh; display: grid; place-items: center;
+    background: radial-gradient(1200px 600px at 50% 20%, #1a1a2e 0%, #0b0b14 60%);
+    color: #e7e7f3;
+    font: 500 15px/1.5 "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  }
+  .card {
+    padding: 32px 40px; border-radius: 16px;
+    background: linear-gradient(180deg, rgba(26,26,46,.9), rgba(17,17,36,.9));
+    border: 1px solid #2a2a44; text-align: center; max-width: 440px;
+  }
+  h1 { margin: 0 0 8px; font-size: 22px; font-weight: 700;
+       background: linear-gradient(90deg, #a78bfa, #60a5fa);
+       -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { margin: 0 0 16px; color: #a8a9c7; }
+  a { color: #8b8cff; text-decoration: none; border-bottom: 1px dashed #8b8cff; }
+  a:hover { border-bottom-style: solid; }
+</style></head>
+<body><div class="card">
+  <h1>Overlay ${kind}</h1>
+  <p>The Murmur pill is now ${kind} on your desktop. You can close this tab.</p>
+  <p><a href="${panelUrl}">Open the control panel →</a></p>
+</div>
+<script>setTimeout(() => { window.close(); }, 1500);</script>
+</body></html>`;
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+  });
+  res.end(body);
 }
 
 interface RouteContext {
@@ -172,6 +226,18 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
 
   if (method === 'GET' && pathname === '/api/state') {
     sendJson(res, 200, stateSnapshot(deps));
+    return true;
+  }
+
+  if (method === 'POST' && pathname === '/api/overlay/show') {
+    deps.showOverlay?.();
+    sendJson(res, 200, { ok: true, visible: deps.isOverlayVisible?.() ?? null });
+    return true;
+  }
+
+  if (method === 'POST' && pathname === '/api/overlay/hide') {
+    deps.hideOverlay?.();
+    sendJson(res, 200, { ok: true, visible: deps.isOverlayVisible?.() ?? null });
     return true;
   }
 
@@ -358,6 +424,22 @@ export function startControlPanelServer(deps: ServerDeps): Promise<ServerHandle>
           console.error('[control-panel] handler error:', err);
           sendError(res, 500, (err as Error).message);
         }
+        return;
+      }
+
+      // Terminal-clickable hyperlinks: side-effectful GETs that return a tiny
+      // confirmation HTML page. Not under /api/ so they render nicely in the
+      // browser when clicked from a terminal.
+      if (method === 'GET' && pathname === '/overlay/show') {
+        deps.showOverlay?.();
+        const base = `http://localhost:${(req.socket.address() as { port: number }).port}`;
+        sendHtmlConfirmation(res, 'shown', base);
+        return;
+      }
+      if (method === 'GET' && pathname === '/overlay/hide') {
+        deps.hideOverlay?.();
+        const base = `http://localhost:${(req.socket.address() as { port: number }).port}`;
+        sendHtmlConfirmation(res, 'hidden', base);
         return;
       }
 
