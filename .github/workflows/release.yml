@@ -128,8 +128,10 @@ jobs:
         run: pnpm build
 
       - name: Publish to npm
-        # `--access public` publishes scoped and unscoped packages publicly.
+        # `--access public` is required for scoped packages (@mouadja/murmur).
         # `--no-git-checks` is needed because we're on a detached ref (the tag).
+        # `--ignore-scripts` skips the prepublishOnly script (check + test:ci)
+        # because the github-release job already ran them above.
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -138,4 +140,4 @@ jobs:
             echo "          Add a token at https://github.com/mouadja02/murmur/settings/secrets/actions"
             exit 0
           fi
-          pnpm publish --access public --no-git-checks
+          pnpm publish --access public --no-git-checks --ignore-scripts

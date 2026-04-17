@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/murmur"><img alt="npm" src="https://img.shields.io/npm/v/murmur?color=cb3837&logo=npm&label=npm"/></a>
-  <a href="https://www.npmjs.com/package/murmur"><img alt="npm downloads" src="https://img.shields.io/npm/dm/murmur?color=cb3837&logo=npm&label=downloads"/></a>
+  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm" src="https://img.shields.io/npm/v/@mouadja/murmur?color=cb3837&logo=npm&label=npm"/></a>
+  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@mouadja/murmur?color=cb3837&logo=npm&label=downloads"/></a>
   <a href="https://github.com/mouadja02/murmur/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/mouadja02/murmur/actions/workflows/ci.yml/badge.svg"/></a>
   <a href="https://github.com/mouadja02/murmur/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/mouadja02/murmur?include_prereleases&sort=semver"/></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-success"/>
@@ -44,24 +44,24 @@ You need **Node.js 20+**, a working microphone, and a local LLM server running s
 ### Option A — just try it (no clone, ~15 s)
 
 ```bash
-npx murmur
+npx @mouadja/murmur
 ```
 
 That pulls the published package from npm, runs the pre-launch banner, and spins up the overlay. On the first run it will also prompt you to fetch `whisper.cpp`:
 
 ```bash
 # Windows: downloads whisper-cli.exe + ggml-base.en.bin into ./bin/whisper/
-npx murmur setup:whisper
+npx @mouadja/murmur setup:whisper
 
 # macOS / Linux: downloads ggml-base.en.bin into ./models/
 # and prints the exact command to install whisper-cli via your package manager
-npx murmur setup:whisper
+npx @mouadja/murmur setup:whisper
 ```
 
 ### Option B — install globally
 
 ```bash
-npm install -g murmur
+npm install -g @mouadja/murmur
 murmur
 ```
 
