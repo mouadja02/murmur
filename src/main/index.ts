@@ -1,10 +1,13 @@
 import 'dotenv/config';
-import { app, type BrowserWindow, ipcMain, Menu, screen } from 'electron';
+import { app, type BrowserWindow, ipcMain, Menu, screen, shell } from 'electron';
 import {
   type InfoPayload,
   IPC_AUDIO_CHUNK,
+  IPC_BEGIN_WINDOW_DRAG,
+  IPC_END_WINDOW_DRAG,
   IPC_HIDE_OVERLAY,
   IPC_INFO,
+  IPC_OPEN_CONTROL_PANEL,
   IPC_QUIT,
   IPC_REQUEST_INFO,
   IPC_SET_MOUSE_INTERACTIVE,
@@ -19,6 +22,7 @@ import {
   printResolvedConfig,
   updateConfigFile,
 } from './config/index.js';
+import { type ServerHandle, startControlPanelServer } from './control-panel/server.js';
 import { HotkeyService } from './hotkey.js';
 import {
   createOverlayWindow,
@@ -29,16 +33,19 @@ import {
 } from './overlay/window.js';
 import { Pipeline } from './pipeline.js';
 import { runPreflight } from './preflight.js';
-import { createProvider, PROVIDER_PRESETS } from './providers/index.js';
+import { createProvider, type LlmProvider, PROVIDER_PRESETS } from './providers/index.js';
+import { beginWindowDrag, endWindowDrag } from './window-drag.js';
 
 let mainWindow: BrowserWindow | null = null;
 let loaded: LoadedConfig | null = null;
 let pipeline: Pipeline | null = null;
+let provider: LlmProvider | null = null;
+let controlPanel: ServerHandle | null = null;
 const hotkey = new HotkeyService();
 
 const POSITION_SAVE_DEBOUNCE_MS = 350;
 
-function buildInfo(l: LoadedConfig): InfoPayload {
+function buildInfo(l: LoadedConfig, controlPanelUrl: string): InfoPayload {
   const r = l.resolved;
   return {
     provider: r.provider,
@@ -48,7 +55,16 @@ function buildInfo(l: LoadedConfig): InfoPayload {
     hotkeyCombo: r.hotkeyCombo,
     toggleHotkeyCombo: r.toggleHotkeyCombo,
     configFilePath: r.configFilePath,
+    controlPanelUrl,
   };
+}
+
+function pushInfoToRenderer(): void {
+  if (!loaded || !mainWindow) return;
+  mainWindow.webContents.send(
+    IPC_INFO,
+    buildInfo(loaded, controlPanel?.url ?? 'http://localhost:7331'),
+  );
 }
 
 function persistOverlayPosition(x: number, y: number): void {
@@ -93,8 +109,18 @@ function showContextMenu(): void {
   if (!mainWindow || !loaded) return;
   const r = loaded.resolved;
   const providerLabel = `${PROVIDER_PRESETS[r.provider].displayName} · ${r.model}`;
+  const panelUrl = controlPanel?.url ?? 'http://localhost:7331';
 
   const menu = Menu.buildFromTemplate([
+    {
+      label: 'Open control panel',
+      click: () => {
+        shell.openExternal(panelUrl).catch((err) => {
+          console.error('[main] failed to open control panel:', err);
+        });
+      },
+    },
+    { type: 'separator' },
     {
       label: 'Hide overlay',
       accelerator: r.toggleHotkeyCombo,
@@ -123,6 +149,7 @@ function showContextMenu(): void {
     { label: r.baseUrl, enabled: false },
     { label: `PTT: ${r.hotkeyCombo}`, enabled: false },
     { label: `Toggle: ${r.toggleHotkeyCombo}`, enabled: false },
+    { label: `Panel: ${panelUrl}`, enabled: false },
     { type: 'separator' },
     {
       label: 'Quit Murmur',
@@ -144,7 +171,7 @@ function wireIPC(): void {
   });
 
   ipcMain.on(IPC_REQUEST_INFO, () => {
-    if (loaded) mainWindow?.webContents.send(IPC_INFO, buildInfo(loaded));
+    pushInfoToRenderer();
   });
 
   ipcMain.on(IPC_SET_MOUSE_INTERACTIVE, (_evt, interactive: boolean) => {
@@ -162,6 +189,21 @@ function wireIPC(): void {
 
   ipcMain.on(IPC_SHOW_CONTEXT_MENU, () => {
     showContextMenu();
+  });
+
+  ipcMain.on(IPC_BEGIN_WINDOW_DRAG, () => {
+    if (mainWindow) beginWindowDrag(mainWindow);
+  });
+
+  ipcMain.on(IPC_END_WINDOW_DRAG, () => {
+    endWindowDrag();
+  });
+
+  ipcMain.on(IPC_OPEN_CONTROL_PANEL, () => {
+    const url = controlPanel?.url ?? 'http://localhost:7331';
+    shell.openExternal(url).catch((err) => {
+      console.error('[main] failed to open control panel:', err);
+    });
   });
 
   ipcMain.on(IPC_QUIT, () => {
@@ -189,6 +231,60 @@ function wireHotkey(): void {
   hotkey.start();
 }
 
+function rebindHotkeys(): void {
+  if (!loaded) return;
+  hotkey.configure({
+    ptt: loaded.resolved.hotkeyCombo,
+    toggle: loaded.resolved.toggleHotkeyCombo,
+  });
+}
+
+function reloadConfigAfterExternalUpdate(): void {
+  if (!loaded) return;
+  const fresh = loadConfig({ userDataDir: app.getPath('userData') });
+  loaded.resolved = fresh.resolved;
+  provider = createProvider(getProviderConfig(loaded.resolved));
+  if (pipeline) {
+    pipeline = new Pipeline({
+      cfg: loaded.resolved,
+      provider,
+      getWindow: () => mainWindow,
+    });
+  }
+  rebindHotkeys();
+  pushInfoToRenderer();
+  console.log(
+    `[murmur] config reloaded from control panel: ` +
+      `provider=${loaded.resolved.provider} model=${loaded.resolved.model}`,
+  );
+}
+
+async function startPanel(): Promise<void> {
+  if (!loaded) return;
+  try {
+    controlPanel = await startControlPanelServer({
+      getCurrentConfig: () => {
+        if (!loaded) throw new Error('config not loaded yet');
+        return loaded.resolved;
+      },
+      onConfigUpdated: () => {
+        reloadConfigAfterExternalUpdate();
+      },
+      testLlm: async () => {
+        if (!provider) return { ok: false, message: 'provider not initialised' };
+        const start = Date.now();
+        const err = await provider.preflight();
+        const latencyMs = Date.now() - start;
+        if (err) return { ok: false, message: err, latencyMs };
+        return { ok: true, message: 'reachable', latencyMs };
+      },
+    });
+    console.log(`[murmur] control panel: ${controlPanel.url}`);
+  } catch (err) {
+    console.error('[murmur] could not start control panel server:', err);
+  }
+}
+
 function wireScreenChanges(): void {
   const reposition = () => {
     if (!mainWindow || !loaded) return;
@@ -202,7 +298,7 @@ function wireScreenChanges(): void {
 async function bootstrap(): Promise<void> {
   await app.whenReady();
 
-  loaded = loadConfig();
+  loaded = loadConfig({ userDataDir: app.getPath('userData') });
 
   if (loaded.cli.helpAndExit) {
     console.log(HELP_TEXT);
@@ -225,7 +321,7 @@ async function bootstrap(): Promise<void> {
       `baseUrl=${loaded.resolved.baseUrl}`,
   );
 
-  const provider = createProvider(getProviderConfig(loaded.resolved));
+  provider = createProvider(getProviderConfig(loaded.resolved));
 
   const preflight = await runPreflight(loaded.resolved, provider);
   if (!preflight.ok) {
@@ -250,7 +346,7 @@ async function bootstrap(): Promise<void> {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.showInactive();
-    if (loaded) mainWindow?.webContents.send(IPC_INFO, buildInfo(loaded));
+    pushInfoToRenderer();
   });
 
   mainWindow.on('closed', () => {
@@ -260,6 +356,8 @@ async function bootstrap(): Promise<void> {
   wireIPC();
   wireHotkey();
   wireScreenChanges();
+  await startPanel();
+  pushInfoToRenderer();
 }
 
 bootstrap().catch((err) => {
@@ -269,6 +367,7 @@ bootstrap().catch((err) => {
 
 app.on('before-quit', () => {
   hotkey.shutdown();
+  controlPanel?.stop().catch(() => undefined);
 });
 
 app.on('window-all-closed', () => {

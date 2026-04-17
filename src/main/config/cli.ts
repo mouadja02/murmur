@@ -88,6 +88,18 @@ export function parseCli(argv: readonly string[]): CliResult {
   if (typeof raw.hotkey === 'string') candidate.hotkeyCombo = raw.hotkey;
   if (typeof raw['toggle-hotkey'] === 'string') candidate.toggleHotkeyCombo = raw['toggle-hotkey'];
   if (typeof raw['logs-dir'] === 'string') candidate.logsDir = raw['logs-dir'];
+  if (typeof raw['skills-dir'] === 'string') candidate.skillsDir = raw['skills-dir'];
+  if (typeof raw['system-prompt'] === 'string') candidate.systemPrompt = raw['system-prompt'];
+  if (typeof raw['enabled-skills'] === 'string') {
+    candidate.enabledSkills = raw['enabled-skills']
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (typeof raw['control-panel-port'] === 'string') {
+    const n = Number(raw['control-panel-port']);
+    if (Number.isFinite(n)) candidate.controlPanelPort = n;
+  }
 
   const overlay: Record<string, unknown> = {};
   if (typeof raw['overlay-anchor'] === 'string') overlay.anchor = raw['overlay-anchor'];
@@ -136,6 +148,14 @@ Overlay window:
   --overlay-offset-x <px>
   --overlay-offset-y <px>
   --overlay-position <x,y>            Forces a free position; auto-set when you drag the pill
+
+Prompt engineering:
+  --system-prompt <text>              Override the active system prompt for this run
+  --enabled-skills <id1,id2,...>      Comma-separated skill IDs to compose into the system prompt
+  --skills-dir <path>                 Directory of *.md skill files
+
+Web control panel:
+  --control-panel-port <port>         HTTP port for the control panel (0 = random, default 7331)
 
 Config file:
   --config <path>                     Override config file location

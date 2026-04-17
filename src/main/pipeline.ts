@@ -2,11 +2,11 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { IPC_START_RECORDING, IPC_STATUS, IPC_STOP_RECORDING, type Status } from '../shared/ipc.js';
-import { SYSTEM_PROMPT } from '../shared/prompts.js';
 import type { ResolvedConfig } from './config/index.js';
 import { pasteAtCursor } from './inject.js';
 import { createSession, type Session } from './logger.js';
 import type { LlmProvider } from './providers/index.js';
+import { composeSystemPrompt, loadSkills } from './skills.js';
 import { transcribe } from './transcribe.js';
 import { buildWav } from './wav.js';
 
@@ -147,10 +147,13 @@ export class Pipeline {
       }
 
       this.setStatus('refining');
-      session.writeSystemPrompt(SYSTEM_PROMPT);
+      const skills = loadSkills(cfg.skillsDir);
+      const composed = composeSystemPrompt(cfg.systemPrompt, skills, cfg.enabledSkills);
+      session.writeSystemPrompt(composed);
+      timings.activeSkills = cfg.enabledSkills.join(',') || '(none)';
       const rStart = Date.now();
       const { text: refined } = await provider.refine({
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: composed,
         userPrompt: transcription,
       });
       timings.refineMs = Date.now() - rStart;

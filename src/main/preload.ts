@@ -2,8 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   type InfoPayload,
   IPC_AUDIO_CHUNK,
+  IPC_BEGIN_WINDOW_DRAG,
+  IPC_END_WINDOW_DRAG,
   IPC_HIDE_OVERLAY,
   IPC_INFO,
+  IPC_OPEN_CONTROL_PANEL,
   IPC_QUIT,
   IPC_REQUEST_INFO,
   IPC_SET_MOUSE_INTERACTIVE,
@@ -45,6 +48,15 @@ contextBridge.exposeInMainWorld('murmur', {
   },
   showContextMenu: () => {
     ipcRenderer.send(IPC_SHOW_CONTEXT_MENU);
+  },
+  beginWindowDrag: () => {
+    ipcRenderer.send(IPC_BEGIN_WINDOW_DRAG);
+  },
+  endWindowDrag: () => {
+    ipcRenderer.send(IPC_END_WINDOW_DRAG);
+  },
+  openControlPanel: () => {
+    ipcRenderer.send(IPC_OPEN_CONTROL_PANEL);
   },
   quit: () => {
     ipcRenderer.send(IPC_QUIT);

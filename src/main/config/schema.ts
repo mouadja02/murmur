@@ -41,8 +41,18 @@ export interface ResolvedConfig {
   /** Persisted absolute screen position when anchor === 'free'. */
   overlayPosition: OverlayPosition | null;
 
+  // Prompt engineering
+  systemPrompt: string;
+  /** Skill IDs (filenames without `.md`) that get composed into the system prompt. */
+  enabledSkills: string[];
+
+  // Web control panel
+  /** 0 picks a random free port at startup. */
+  controlPanelPort: number;
+
   // Paths
   logsDir: string;
+  skillsDir: string;
   configFilePath: string;
 }
 
@@ -73,7 +83,12 @@ export interface PartialConfig {
     position?: OverlayPosition | null;
   };
 
+  systemPrompt?: string;
+  enabledSkills?: string[];
+  controlPanelPort?: number;
+
   logsDir?: string;
+  skillsDir?: string;
 }
 
 const VALID_PROVIDERS: ProviderId[] = ['ollama', 'openai-compat'];
@@ -138,6 +153,19 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
   }
 
   if (isString(obj.logsDir)) out.logsDir = obj.logsDir;
+  if (isString(obj.skillsDir)) out.skillsDir = obj.skillsDir;
+
+  if (isString(obj.systemPrompt)) out.systemPrompt = obj.systemPrompt;
+  if (Array.isArray(obj.enabledSkills)) {
+    out.enabledSkills = obj.enabledSkills.filter(isString);
+  }
+  if (
+    isNumber(obj.controlPanelPort) &&
+    obj.controlPanelPort >= 0 &&
+    obj.controlPanelPort <= 65535
+  ) {
+    out.controlPanelPort = Math.floor(obj.controlPanelPort);
+  }
 
   return out;
 }

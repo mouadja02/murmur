@@ -7,7 +7,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "dev": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs && electron . --",
+    "dev": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs && node scripts/dev-launch.mjs",
     "build": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs",
     "check": "tsc --noEmit && biome check .",
     "format": "biome format --write .",
@@ -19,12 +19,15 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
     "@types/node": "^25.6.0",
+    "@types/prompts": "^2.4.9",
     "dotenv": "^17.4.2",
     "electron": "^41.2.1",
     "typescript": "^6.0.3"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",
+    "picocolors": "^1.1.1",
+    "prompts": "^2.4.2",
     "uiohook-napi": "^1.5.5"
   },
   "pnpm": {

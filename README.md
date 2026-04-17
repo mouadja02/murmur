@@ -19,6 +19,62 @@ Voice-first prompt engineering for vibe coders. A circular floating overlay sits
    - restores your previous clipboard contents.
 5. Every session is written to a timestamped folder under `logs/` for inspection.
 
+Every `pnpm dev` launch shows a **terminal banner** summarising provider / hotkeys / skills / system-prompt / control-panel URL, and hands you an interactive menu to continue, edit the system prompt inline, or jump straight into the browser-based **control panel** (see below).
+
+---
+
+## Control panel
+
+Murmur ships with a small local control panel so you never have to hand-edit `config.json`.
+
+- Served on `http://localhost:7331` (configurable via `--control-panel-port` or the `controlPanelPort` config field). Port `0` picks a free port and logs the URL.
+- Opens in three ways:
+  1. From the pre-launch menu in the terminal ("Open control panel in browser").
+  2. Right-click the floating overlay → **Open control panel**.
+  3. Paste the URL printed by `pnpm dev` into your browser yourself.
+- **All edits persist to `%APPDATA%\murmur\config.json`** and hot-reload into the running app (providers are re-created, hotkeys are re-registered, the overlay tooltip refreshes) — no restart needed.
+
+Tabs:
+
+| Tab | What you can do |
+| --- | --- |
+| **System prompt** | View and edit the active prompt that wraps every transcription. Character count, reset-to-default, save. |
+| **Skills** | List / add / rename / edit / delete skills. Per-skill enable toggle; enabled skills are concatenated under an `Active Skills` section in the composed system prompt. |
+| **Provider** | Switch provider, base URL, model, API key, temperature. One-click presets for Ollama / LM Studio / llama.cpp server. **Test connection** button pings the provider and reports latency. |
+| **Whisper** | Paths to `whisper-cli.exe` and the `ggml-*.bin` model. |
+| **Hotkeys** | Push-to-talk combo + toggle combo. Live validation. |
+| **Paths** | Logs dir, skills dir, and the resolved config file path (read-only). |
+
+The composed system prompt (base prompt + enabled skills) is previewed live in the **System prompt** tab so you can see exactly what the LLM will receive.
+
+---
+
+## Skills
+
+Skills are small Markdown files that get layered onto the base system prompt when enabled. Perfect for "always talk like a senior Go reviewer", "bias toward concise output", or project-specific vocabulary.
+
+Location: `skillsDir` (defaults to `./skills` in the project). On first launch Murmur seeds two example skills so the directory isn't empty.
+
+Format — each skill is one `.md` file with YAML-ish frontmatter and a Markdown body:
+
+```markdown
+---
+id: concise-output
+name: Concise output
+description: Trim filler, keep the prompt to the point.
+---
+
+Prefer terse, structured prompts. No hedging, no apologies, no restating the
+question. Use bullet lists for constraints and acceptance criteria.
+```
+
+Rules:
+- `id` is the filename (without `.md`) and must be unique.
+- `name` and `description` are what you see in the control panel.
+- Body content is what gets appended to the final system prompt, under an `Active Skills` header, only when the skill's toggle is on.
+
+You can also author / edit / delete skills entirely from the control panel UI — files are written back to `skillsDir` so they're version-controllable.
+
 ---
 
 ## Supported LLM providers
@@ -125,6 +181,10 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 | `--overlay-anchor <bottom-center \| bottom-right \| top-right \| free>` | Where to dock the overlay |
 | `--overlay-offset-x <px>` / `--overlay-offset-y <px>` | Overlay offset from the anchor |
 | `--overlay-position <x,y>` | Force a free-floating screen position; auto-set when you drag the pill |
+| `--system-prompt <text>` | Override the active system prompt for this launch (skills are still merged on top) |
+| `--skills-dir <path>` | Where to read / write skill `.md` files (default `./skills`) |
+| `--enabled-skills <a,b,c>` | Comma-separated skill IDs to force-enable for this launch |
+| `--control-panel-port <n>` | Port for the local control panel (default `7331`; `0` = pick free) |
 | `--config <path>` | Override the config file location |
 | `--print-config` | Print the resolved config and exit |
 | `-h`, `--help` | Show help and exit |
@@ -154,11 +214,17 @@ Combo strings parse from `Ctrl+Shift+Space` form. Modifiers accept `Ctrl` / `Con
     "offsetY": 24,
     "position": null
   },
-  "logsDir": "C:\\path\\to\\logs"
+  "logsDir": "C:\\path\\to\\logs",
+  "skillsDir": "C:\\path\\to\\skills",
+  "systemPrompt": "You refine a raw voice transcription into a high-quality prompt...",
+  "enabledSkills": [],
+  "controlPanelPort": 7331
 }
 ```
 
 Any field can be omitted; missing fields fall through to defaults. `overlay.position` is written automatically the first time you drag the pill — at that point `overlay.anchor` is also flipped to `"free"` so the new spot survives restarts. Right-click → **Reset position** clears it.
+
+`systemPrompt`, `enabledSkills`, and `controlPanelPort` are all editable directly from the control panel; changes are written back to this file atomically.
 
 ### Environment variables (legacy)
 
@@ -210,7 +276,7 @@ If any check fails, Murmur prints a clear error and exits. Fix it and re-run.
 | **Hold** PTT combo (default `Ctrl+Shift+Space`) | Push-to-talk: records while held, processes on release |
 | **Tap** toggle combo (default `Ctrl+Shift+H`) | Show / hide the overlay (works whether visible or hidden — it's the "reopen" path too) |
 | **Drag** anywhere on the visible pill | Moves the overlay; position is saved to `config.json` and survives restart |
-| **Right-click** the pill | Native context menu: Hide, Reset position, the active provider/model/base URL/hotkeys, Quit |
+| **Right-click** the pill | Native context menu: **Open control panel**, Hide, Reset position, the active provider/model/base URL/hotkeys, Quit |
 | **Hover** the overlay | Tooltip with provider · model · base URL · both hotkeys · interaction hints |
 
 The toggle hotkey and PTT hotkey are independent. If you forget the toggle combo and have already hidden the overlay, re-running `pnpm dev` always brings it back at the saved position.

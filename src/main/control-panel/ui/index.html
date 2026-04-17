@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Murmur · Control Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div class="brand-text">
+          <div class="brand-name">Murmur</div>
+          <div class="brand-slogan">voice-first prompt engineering for vibe coders</div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" id="btn-save-all" class="btn btn-primary" title="Save all changes">
+          Save all
+        </button>
+        <span id="save-status" class="save-status"></span>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab" data-tab="system-prompt">System prompt</button>
+      <button type="button" class="tab" data-tab="skills">Skills</button>
+      <button type="button" class="tab" data-tab="provider">Provider</button>
+      <button type="button" class="tab" data-tab="whisper">Whisper</button>
+      <button type="button" class="tab" data-tab="hotkeys">Hotkeys</button>
+      <button type="button" class="tab" data-tab="paths">Paths</button>
+    </nav>
+
+    <main class="content">
+      <section class="pane" data-pane="system-prompt">
+        <div class="pane-header">
+          <h2>System prompt</h2>
+          <p>
+            The base instructions sent to the LLM before every transcription. Active skills are
+            composed underneath.
+          </p>
+        </div>
+        <textarea id="system-prompt" spellcheck="false"></textarea>
+        <div class="pane-footer">
+          <button type="button" id="btn-reset-prompt" class="btn btn-ghost">
+            Reset to default
+          </button>
+          <div class="spacer"></div>
+          <span id="prompt-charcount" class="hint"></span>
+          <button type="button" id="btn-save-prompt" class="btn btn-primary">Save prompt</button>
+        </div>
+        <details class="expander">
+          <summary>Preview composed prompt (base + active skills)</summary>
+          <pre id="composed-prompt" class="code"></pre>
+        </details>
+      </section>
+
+      <section class="pane" data-pane="skills">
+        <div class="pane-header">
+          <h2>Skills</h2>
+          <p>
+            Reusable instruction fragments that get appended to the system prompt when enabled.
+            Skills live as <code>*.md</code> files in your skills directory.
+          </p>
+        </div>
+        <div class="split">
+          <aside class="skill-list">
+            <div class="skill-list-header">
+              <span id="skill-count" class="hint"></span>
+              <button type="button" id="btn-new-skill" class="btn btn-ghost">+ New skill</button>
+            </div>
+            <ul id="skill-list"></ul>
+          </aside>
+          <div class="skill-editor">
+            <div id="skill-empty" class="empty">
+              <div>No skill selected.</div>
+              <div class="hint">Pick one on the left or click “+ New skill”.</div>
+            </div>
+            <form id="skill-form" class="hidden">
+              <label>
+                <span>Name</span>
+                <input id="skill-name" type="text" autocomplete="off" />
+              </label>
+              <label>
+                <span>Description</span>
+                <input id="skill-desc" type="text" autocomplete="off" />
+              </label>
+              <label>
+                <span>ID <small>(filename slug; leave blank to auto-generate)</small></span>
+                <input id="skill-id" type="text" autocomplete="off" />
+              </label>
+              <label>
+                <span>Instructions</span>
+                <textarea id="skill-content" spellcheck="false"></textarea>
+              </label>
+              <div class="skill-toolbar">
+                <label class="toggle">
+                  <input id="skill-enabled" type="checkbox" />
+                  <span>Enabled (compose into system prompt)</span>
+                </label>
+                <div class="spacer"></div>
+                <button id="btn-delete-skill" type="button" class="btn btn-danger">
+                  Delete
+                </button>
+                <button id="btn-save-skill" type="submit" class="btn btn-primary">
+                  Save skill
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane" data-pane="provider">
+        <div class="pane-header">
+          <h2>LLM provider</h2>
+          <p>Runs entirely on your machine by default. No data leaves without a base URL you set.</p>
+        </div>
+        <form id="provider-form">
+          <label>
+            <span>Provider</span>
+            <select id="cfg-provider">
+              <option value="ollama">Ollama</option>
+              <option value="openai-compat">OpenAI-compatible (LM Studio, llama.cpp server)</option>
+            </select>
+          </label>
+          <label>
+            <span>Base URL</span>
+            <input id="cfg-baseUrl" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Model</span>
+            <input id="cfg-model" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>API key <small>(blank for local providers)</small></span>
+            <input id="cfg-apiKey" type="password" autocomplete="off" placeholder="(not set)" />
+          </label>
+          <label>
+            <span>Temperature</span>
+            <input id="cfg-temperature" type="number" step="0.05" min="0" max="2" />
+          </label>
+          <div class="pane-footer">
+            <button id="btn-test-llm" type="button" class="btn btn-ghost">Test connection</button>
+            <span id="llm-test-result" class="hint"></span>
+            <div class="spacer"></div>
+            <button id="btn-save-provider" type="submit" class="btn btn-primary">
+              Save provider
+            </button>
+          </div>
+        </form>
+        <details class="expander">
+          <summary>Quick presets</summary>
+          <div class="presets">
+            <button type="button" class="preset" data-preset="ollama">
+              Ollama · qwen3:4b
+            </button>
+            <button type="button" class="preset" data-preset="lmstudio">
+              LM Studio · 1234
+            </button>
+            <button type="button" class="preset" data-preset="llamacpp">
+              llama.cpp server · 8080
+            </button>
+          </div>
+        </details>
+      </section>
+
+      <section class="pane" data-pane="whisper">
+        <div class="pane-header">
+          <h2>Whisper (local STT)</h2>
+          <p>Point at your <code>whisper-cli</code> binary and a <code>ggml-*.bin</code> model.</p>
+        </div>
+        <form id="whisper-form">
+          <label>
+            <span>Whisper CLI path</span>
+            <input id="cfg-whisperCliPath" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Whisper model path</span>
+            <input id="cfg-whisperModelPath" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Sample rate (Hz)</span>
+            <input id="cfg-sampleRate" type="number" min="8000" max="48000" />
+          </label>
+          <div class="pane-footer">
+            <div class="spacer"></div>
+            <button id="btn-save-whisper" type="submit" class="btn btn-primary">
+              Save whisper
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="pane" data-pane="hotkeys">
+        <div class="pane-header">
+          <h2>Hotkeys</h2>
+          <p>Combo strings like <code>Ctrl+Shift+Space</code>, <code>Alt+`</code>, <code>F9</code>.</p>
+        </div>
+        <form id="hotkeys-form">
+          <label>
+            <span>Push-to-talk <small>(hold to record)</small></span>
+            <input id="cfg-hotkeyCombo" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Toggle overlay <small>(hide / show the pill)</small></span>
+            <input id="cfg-toggleHotkeyCombo" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Clipboard restore delay (ms)</span>
+            <input id="cfg-clipboardRestoreDelayMs" type="number" min="0" max="2000" />
+          </label>
+          <div class="pane-footer">
+            <div class="spacer"></div>
+            <button id="btn-save-hotkeys" type="submit" class="btn btn-primary">
+              Save hotkeys
+            </button>
+          </div>
+        </form>
+        <p class="hint">
+          Hotkey changes take effect on next app start.
+        </p>
+      </section>
+
+      <section class="pane" data-pane="paths">
+        <div class="pane-header">
+          <h2>Paths</h2>
+          <p>Absolute paths preferred. Relative paths resolve against the working directory.</p>
+        </div>
+        <form id="paths-form">
+          <label>
+            <span>Logs directory</span>
+            <input id="cfg-logsDir" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Skills directory</span>
+            <input id="cfg-skillsDir" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Control panel port</span>
+            <input id="cfg-controlPanelPort" type="number" min="0" max="65535" />
+          </label>
+          <label>
+            <span>Config file</span>
+            <input id="cfg-configFilePath" type="text" readonly />
+          </label>
+          <div class="pane-footer">
+            <div class="spacer"></div>
+            <button id="btn-save-paths" type="submit" class="btn btn-primary">Save paths</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,5 +1,5 @@
+import os from 'node:os';
 import path from 'node:path';
-import { app } from 'electron';
 import { PROVIDER_PRESETS, type ProviderConfig } from '../providers/index.js';
 import { type CliResult, parseCli } from './cli.js';
 import { DEFAULT_CONFIG } from './defaults.js';
@@ -7,8 +7,26 @@ import { readConfigFile, writeDefaultConfigIfMissing } from './file.js';
 import type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
 
 export { HELP_TEXT } from './cli.js';
+export { DEFAULT_CONFIG, DEFAULT_SYSTEM_PROMPT } from './defaults.js';
 export { updateConfigFile } from './file.js';
 export type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
+
+/**
+ * Mirrors Electron's `app.getPath('userData')` for the "murmur" app name so
+ * the pre-launch CLI (which runs in plain Node, no Electron) lands at the
+ * exact same config file as the main process.
+ */
+export function getUserDataDir(appName = 'murmur'): string {
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) return path.join(appData, appName);
+    return path.join(os.homedir(), 'AppData', 'Roaming', appName);
+  }
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', appName);
+  }
+  return path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), appName);
+}
 
 function readEnv(): PartialConfig {
   const e = process.env;
@@ -30,6 +48,17 @@ function readEnv(): PartialConfig {
   if (e.MURMUR_HOTKEY) partial.hotkeyCombo = e.MURMUR_HOTKEY;
   if (e.MURMUR_TOGGLE_HOTKEY) partial.toggleHotkeyCombo = e.MURMUR_TOGGLE_HOTKEY;
   if (e.MURMUR_LOGS_DIR) partial.logsDir = e.MURMUR_LOGS_DIR;
+  if (e.MURMUR_SKILLS_DIR) partial.skillsDir = e.MURMUR_SKILLS_DIR;
+  if (e.MURMUR_SYSTEM_PROMPT) partial.systemPrompt = e.MURMUR_SYSTEM_PROMPT;
+  if (e.MURMUR_ENABLED_SKILLS) {
+    partial.enabledSkills = e.MURMUR_ENABLED_SKILLS.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (e.MURMUR_CONTROL_PANEL_PORT) {
+    const n = Number(e.MURMUR_CONTROL_PANEL_PORT);
+    if (Number.isFinite(n)) partial.controlPanelPort = n;
+  }
 
   return partial;
 }
@@ -82,7 +111,7 @@ function pickApiKey(sources: MergeSources): string | null {
 
 function resolveLayeredPath(
   sources: MergeSources,
-  key: 'whisperCliPath' | 'whisperModelPath' | 'logsDir',
+  key: 'whisperCliPath' | 'whisperModelPath' | 'logsDir' | 'skillsDir',
   fallback: string,
 ): string {
   const cwdBase = process.cwd();
@@ -99,28 +128,37 @@ export interface LoadedConfig {
   configFileWritten: boolean;
 }
 
+export interface LoadConfigOptions {
+  /** Where the JSON config lives by default. Pass `app.getPath('userData')` from Electron. */
+  userDataDir: string;
+  /** Defaults to `process.argv`. */
+  argv?: readonly string[];
+}
+
 /**
  * Resolves the runtime config from CLI flags, the user config file, and `.env`.
- * MUST be called after `app.whenReady()` because we use `app.getPath`.
+ * Pure Node — no Electron import — so the pre-launch CLI can reuse it.
  */
-export function loadConfig(argv: readonly string[] = process.argv): LoadedConfig {
-  const cli = parseCli(argv);
+export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
+  const cli = parseCli(opts.argv ?? process.argv);
 
   const configFilePath = path.resolve(
-    cli.configFilePath ?? path.join(app.getPath('userData'), 'config.json'),
+    cli.configFilePath ?? path.join(opts.userDataDir, 'config.json'),
   );
 
   let fileLoad = readConfigFile(configFilePath);
   let written = false;
   if (!fileLoad.existed) {
     // Write absolute paths so that future runs from a different cwd still
-    // resolve to the original install's whisper assets / logs directory.
+    // resolve to the original install's whisper assets / logs / skills dirs.
     const cwdBase = process.cwd();
+    const userDataDir = path.dirname(configFilePath);
     const seedDefaults = {
       ...DEFAULT_CONFIG,
       whisperCliPath: path.resolve(cwdBase, DEFAULT_CONFIG.whisperCliPath),
       whisperModelPath: path.resolve(cwdBase, DEFAULT_CONFIG.whisperModelPath),
       logsDir: path.resolve(cwdBase, DEFAULT_CONFIG.logsDir),
+      skillsDir: path.resolve(userDataDir, 'skills'),
     };
     written = writeDefaultConfigIfMissing(configFilePath, seedDefaults);
     if (written) fileLoad = readConfigFile(configFilePath);
@@ -167,6 +205,19 @@ export function loadConfig(argv: readonly string[] = process.argv): LoadedConfig
 
   const overlay = mergeOverlay(sources);
 
+  const systemPrompt =
+    pickFirst(sources.cli.systemPrompt, sources.file.systemPrompt, sources.env.systemPrompt) ??
+    DEFAULT_CONFIG.systemPrompt;
+  const enabledSkills =
+    pickFirst(sources.cli.enabledSkills, sources.file.enabledSkills, sources.env.enabledSkills) ??
+    DEFAULT_CONFIG.enabledSkills;
+  const controlPanelPort =
+    pickFirst(
+      sources.cli.controlPanelPort,
+      sources.file.controlPanelPort,
+      sources.env.controlPanelPort,
+    ) ?? DEFAULT_CONFIG.controlPanelPort;
+
   const resolved: ResolvedConfig = {
     provider,
     baseUrl,
@@ -187,7 +238,11 @@ export function loadConfig(argv: readonly string[] = process.argv): LoadedConfig
     overlayOffsetX: overlay.offsetX,
     overlayOffsetY: overlay.offsetY,
     overlayPosition: overlay.position,
+    systemPrompt,
+    enabledSkills,
+    controlPanelPort,
     logsDir: resolveLayeredPath(sources, 'logsDir', DEFAULT_CONFIG.logsDir),
+    skillsDir: resolveLayeredPath(sources, 'skillsDir', DEFAULT_CONFIG.skillsDir),
     configFilePath,
   };
 

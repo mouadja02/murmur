@@ -15,6 +15,9 @@ declare global {
       setMouseInteractive: (interactive: boolean) => void;
       hideOverlay: () => void;
       showContextMenu: () => void;
+      beginWindowDrag: () => void;
+      endWindowDrag: () => void;
+      openControlPanel: () => void;
       quit: () => void;
     };
   }
@@ -28,6 +31,7 @@ interface InfoView {
   hotkeyCombo: string;
   toggleHotkeyCombo: string;
   configFilePath: string;
+  controlPanelUrl: string;
 }
 
 const STATES = [
@@ -43,7 +47,7 @@ const STATES = [
 type StateName = (typeof STATES)[number];
 
 const overlay = required<HTMLDivElement>('overlay');
-const trigger = required<HTMLButtonElement>('trigger');
+const _trigger = required<HTMLButtonElement>('trigger');
 const logoWrap = required<HTMLSpanElement>('logo-wrap');
 const barsEl = required<HTMLDivElement>('bars');
 const statusChip = required<HTMLDivElement>('status-chip');
@@ -107,16 +111,12 @@ window.murmur.onInfo((info) => {
     `${info.providerDisplayName} · ${info.model}\n` +
     `${info.baseUrl}\n` +
     `PTT ${info.hotkeyCombo}  ·  Toggle ${info.toggleHotkeyCombo}\n` +
+    `Panel ${info.controlPanelUrl}\n` +
     'Drag to move · Right-click for menu';
   infoTooltip.style.whiteSpace = 'pre';
 });
 
 window.murmur.requestInfo();
-
-trigger.addEventListener('click', (e) => {
-  e.stopPropagation();
-  window.murmur.toggleRecording();
-});
 
 // Toggle window-level mouse passthrough so transparent areas don't eat clicks.
 overlay.addEventListener('mouseenter', () => {
@@ -130,4 +130,46 @@ overlay.addEventListener('mouseleave', () => {
 overlay.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   window.murmur.showContextMenu();
+});
+
+// Programmatic drag: a press becomes a click if it doesn't move past the
+// threshold, and becomes a window drag if it does. Window movement happens
+// in the main process via cursor polling.
+const DRAG_THRESHOLD_PX = 4;
+
+interface PressState {
+  startX: number;
+  startY: number;
+  dragStarted: boolean;
+}
+
+let press: PressState | null = null;
+
+overlay.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  press = { startX: e.screenX, startY: e.screenY, dragStarted: false };
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!press) return;
+  if (press.dragStarted) return;
+  const dx = e.screenX - press.startX;
+  const dy = e.screenY - press.startY;
+  if (Math.abs(dx) + Math.abs(dy) >= DRAG_THRESHOLD_PX) {
+    press.dragStarted = true;
+    overlay.classList.add('dragging');
+    window.murmur.beginWindowDrag();
+  }
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (e.button !== 0 || !press) return;
+  const wasDrag = press.dragStarted;
+  press = null;
+  if (wasDrag) {
+    overlay.classList.remove('dragging');
+    window.murmur.endWindowDrag();
+  } else {
+    window.murmur.toggleRecording();
+  }
 });
