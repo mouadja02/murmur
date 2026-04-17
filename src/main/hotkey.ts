@@ -18,12 +18,7 @@ export class HotkeyService extends EventEmitter {
     this.started = true;
 
     uIOhook.on('keydown', (e) => {
-      if (
-        e.keycode === UiohookKey.Space &&
-        e.ctrlKey &&
-        e.shiftKey &&
-        !this.recording
-      ) {
+      if (e.keycode === UiohookKey.Space && e.ctrlKey && e.shiftKey && !this.recording) {
         this.recording = true;
         this.emit('start');
       }

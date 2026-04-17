@@ -11,16 +11,7 @@ export interface TranscribeResult {
 
 export async function transcribe(wavPath: string): Promise<TranscribeResult> {
   const outPrefix = path.join(path.dirname(wavPath), 'transcription');
-  const args = [
-    '-m',
-    CONFIG.whisperModelPath,
-    '-f',
-    wavPath,
-    '-nt',
-    '-otxt',
-    '-of',
-    outPrefix,
-  ];
+  const args = ['-m', CONFIG.whisperModelPath, '-f', wavPath, '-nt', '-otxt', '-of', outPrefix];
 
   const started = Date.now();
   let stderr = '';

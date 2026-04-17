@@ -1,23 +1,16 @@
-import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  IPC_START_RECORDING,
-  IPC_STATUS,
-  IPC_STOP_RECORDING,
-  type Status,
-} from '../shared/ipc.js';
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { IPC_AUDIO_CHUNK } from '../shared/ipc.js';
 import { HotkeyService } from './hotkey.js';
+import { Pipeline } from './pipeline.js';
 import { runPreflight } from './preflight.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 const hotkey = new HotkeyService();
-
-function setStatus(s: Status): void {
-  mainWindow?.webContents.send(IPC_STATUS, s);
-}
+const pipeline = new Pipeline(() => mainWindow);
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -27,6 +20,8 @@ function createWindow(): void {
     title: 'murmur',
     backgroundColor: '#0a0a0a',
     autoHideMenuBar: true,
+    alwaysOnTop: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: false,
@@ -35,25 +30,27 @@ function createWindow(): void {
     },
   });
 
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.showInactive();
+  });
+
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
+function wireIPC(): void {
+  ipcMain.on(IPC_AUDIO_CHUNK, (_evt, buffer: ArrayBuffer) => {
+    pipeline.handleAudioChunk(buffer).catch((err) => {
+      console.error('[main] handleAudioChunk crashed:', err);
+    });
+  });
+}
+
 function wireHotkey(): void {
-  hotkey.on('start', () => {
-    console.log('[hotkey] start');
-    setStatus('recording');
-    mainWindow?.webContents.send(IPC_START_RECORDING);
-  });
-
-  hotkey.on('stop', () => {
-    console.log('[hotkey] stop');
-    setStatus('transcribing');
-    mainWindow?.webContents.send(IPC_STOP_RECORDING);
-  });
-
+  hotkey.on('start', () => pipeline.start());
+  hotkey.on('stop', () => pipeline.stop());
   hotkey.start();
 }
 
@@ -73,6 +70,7 @@ async function bootstrap(): Promise<void> {
   console.error('[murmur] preflight ok');
 
   createWindow();
+  wireIPC();
   wireHotkey();
 }
 

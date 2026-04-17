@@ -30,14 +30,9 @@ window.murmur.onStartRecording(async () => {
 window.murmur.onStopRecording(async () => {
   try {
     const buf = await stopCapture();
-    if (buf.byteLength > 0) {
-      window.murmur.sendAudioChunk(buf);
-    } else {
-      console.warn('[renderer] stop called with no audio captured');
-    }
+    window.murmur.sendAudioChunk(buf);
   } catch (err) {
     console.error('[renderer] stopCapture failed:', err);
+    window.murmur.sendAudioChunk(new ArrayBuffer(0));
   }
 });
-
-export {};
