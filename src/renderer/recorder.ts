@@ -1,11 +1,14 @@
 const TARGET_SAMPLE_RATE = 16000;
 const BUFFER_SIZE = 4096;
+const ANALYSER_FFT_SIZE = 256; // -> 128 frequency bins
 
 interface CaptureState {
   stream: MediaStream;
   audioContext: AudioContext;
   processor: ScriptProcessorNode;
   mute: GainNode;
+  analyser: AnalyserNode;
+  freqBuffer: Uint8Array;
   chunks: Float32Array[];
   sourceSampleRate: number;
 }
@@ -59,12 +62,16 @@ export async function startCapture(): Promise<void> {
   const processor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
   const mute = audioContext.createGain();
   mute.gain.value = 0;
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = ANALYSER_FFT_SIZE;
+  analyser.smoothingTimeConstant = 0.6;
 
   const chunks: Float32Array[] = [];
   processor.onaudioprocess = (e) => {
     chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
   };
 
+  source.connect(analyser);
   source.connect(processor);
   processor.connect(mute);
   mute.connect(audioContext.destination);
@@ -74,6 +81,8 @@ export async function startCapture(): Promise<void> {
     audioContext,
     processor,
     mute,
+    analyser,
+    freqBuffer: new Uint8Array(analyser.frequencyBinCount),
     chunks,
     sourceSampleRate: audioContext.sampleRate,
   };
@@ -86,6 +95,7 @@ export async function stopCapture(): Promise<ArrayBuffer> {
 
   captured.processor.disconnect();
   captured.mute.disconnect();
+  captured.analyser.disconnect();
   try {
     await captured.audioContext.close();
   } catch {
@@ -107,4 +117,14 @@ export async function stopCapture(): Promise<ArrayBuffer> {
 
 export function isCapturing(): boolean {
   return state !== null;
+}
+
+/**
+ * Reads the current frequency-domain data into the recorder's internal buffer
+ * and returns it. Returns `null` when not capturing.
+ */
+export function readFrequencies(): Uint8Array | null {
+  if (!state) return null;
+  state.analyser.getByteFrequencyData(state.freqBuffer);
+  return state.freqBuffer;
 }

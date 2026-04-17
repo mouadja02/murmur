@@ -1,7 +1,15 @@
+// main → renderer
 export const IPC_STATUS = 'murmur:status';
 export const IPC_START_RECORDING = 'murmur:start-recording';
 export const IPC_STOP_RECORDING = 'murmur:stop-recording';
+export const IPC_INFO = 'murmur:info';
+
+// renderer → main
 export const IPC_AUDIO_CHUNK = 'murmur:audio-chunk';
+export const IPC_TOGGLE_RECORDING = 'murmur:toggle-recording';
+export const IPC_REQUEST_INFO = 'murmur:request-info';
+export const IPC_SET_MOUSE_INTERACTIVE = 'murmur:set-mouse-interactive';
+export const IPC_QUIT = 'murmur:quit';
 
 export type Status =
   | 'idle'
@@ -11,3 +19,16 @@ export type Status =
   | 'injecting'
   | 'done'
   | 'error';
+
+/**
+ * Snapshot of public-safe runtime info that the renderer is allowed to see.
+ * The api key is intentionally excluded.
+ */
+export interface InfoPayload {
+  provider: string;
+  providerDisplayName: string;
+  baseUrl: string;
+  model: string;
+  hotkeyCombo: string;
+  configFilePath: string;
+}

@@ -4,67 +4,283 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     />
     <title>murmur</title>
     <style>
+      :root {
+        --accent: #a78bfa;
+        --accent-2: #60a5fa;
+        --accent-soft: rgba(167, 139, 250, 0.18);
+        --recording: #f87171;
+        --processing: #fbbf24;
+        --done: #34d399;
+        --error: #f87171;
+        --pill-bg: rgba(15, 15, 20, 0.78);
+        --pill-border: rgba(255, 255, 255, 0.06);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
       body {
-        font-family: 'SF Mono', Consolas, ui-monospace, monospace;
-        background: #0a0a0a;
-        color: #e0e0e0;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
+        height: 100%;
         margin: 0;
+        padding: 0;
+        background: transparent;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+        color: #e6e6f0;
+        overflow: hidden;
         user-select: none;
         -webkit-user-select: none;
+        cursor: default;
       }
-      #brand {
-        font-size: 11px;
-        color: #555;
-        letter-spacing: 3px;
-        margin-bottom: 10px;
+
+      #overlay {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        height: 64px;
+        width: 64px;
+        display: flex;
+        align-items: center;
+        padding: 4px;
+        gap: 10px;
+        background: var(--pill-bg);
+        border: 1px solid var(--pill-border);
+        border-radius: 32px;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow:
+          0 12px 32px rgba(0, 0, 0, 0.35),
+          0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+        transition:
+          width 220ms cubic-bezier(0.4, 0.0, 0.2, 1),
+          background-color 200ms ease,
+          border-color 200ms ease;
+        -webkit-app-region: drag;
       }
-      #status {
-        font-size: 18px;
-        font-weight: 500;
-        padding: 6px 14px;
+
+      #overlay.expanded {
+        width: 296px;
+      }
+
+      #trigger {
+        flex: 0 0 auto;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        border: 0;
+        padding: 0;
+        margin: 0;
+        background:
+          radial-gradient(circle at 30% 30%, #1e1e2a 0%, #0e0e14 70%);
+        box-shadow:
+          inset 0 0 0 1.5px rgba(255, 255, 255, 0.06),
+          0 0 0 0 var(--accent-soft);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        transition:
+          box-shadow 200ms ease,
+          transform 120ms ease,
+          background-color 200ms ease;
+        -webkit-app-region: no-drag;
+      }
+
+      #trigger:hover {
+        box-shadow:
+          inset 0 0 0 1.5px rgba(255, 255, 255, 0.12),
+          0 0 0 6px var(--accent-soft);
+      }
+
+      #trigger:active {
+        transform: scale(0.96);
+      }
+
+      #trigger svg {
+        width: 28px;
+        height: 28px;
+      }
+
+      #trigger::after {
+        content: '';
+        position: absolute;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      .state-recording #trigger {
+        background:
+          radial-gradient(circle at 30% 30%, #3f1515 0%, #1a0808 80%);
+        box-shadow:
+          inset 0 0 0 1.5px rgba(248, 113, 113, 0.4),
+          0 0 0 4px rgba(248, 113, 113, 0.18);
+      }
+
+      .state-recording #trigger::before {
+        content: '';
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--recording);
+        box-shadow: 0 0 12px rgba(248, 113, 113, 0.7);
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+
+      .state-recording #logo-wrap {
+        opacity: 0.15;
+      }
+
+      @keyframes pulse {
+        0%, 100% { transform: scale(0.85); opacity: 0.65; }
+        50% { transform: scale(1.15); opacity: 1; }
+      }
+
+      #bars {
+        flex: 1 1 auto;
+        height: 40px;
+        display: none;
+        align-items: center;
+        gap: 3px;
+        padding: 0 12px 0 4px;
+        -webkit-app-region: drag;
+      }
+
+      .state-recording #bars,
+      .state-transcribing #bars,
+      .state-refining #bars,
+      .state-injecting #bars,
+      .state-done #bars,
+      .state-error #bars {
+        display: flex;
+      }
+
+      .bar {
+        flex: 1 1 0;
+        height: 100%;
+        max-width: 4px;
+        background: linear-gradient(180deg, var(--accent), var(--accent-2));
+        border-radius: 2px;
+        transform-origin: center;
+        transform: scaleY(0.08);
+        transition: transform 60ms linear, background 200ms ease;
+      }
+
+      .state-recording .bar {
+        background: linear-gradient(180deg, #fca5a5, var(--recording));
+      }
+
+      .state-transcribing .bar,
+      .state-refining .bar,
+      .state-injecting .bar {
+        background: linear-gradient(180deg, #fde68a, var(--processing));
+        animation: shimmer 1.4s ease-in-out infinite;
+      }
+
+      .state-done .bar {
+        background: linear-gradient(180deg, #6ee7b7, var(--done));
+        transform: scaleY(0.55) !important;
+      }
+
+      .state-error .bar {
+        background: linear-gradient(180deg, #fca5a5, var(--error));
+        transform: scaleY(0.5) !important;
+      }
+
+      @keyframes shimmer {
+        0%, 100% { opacity: 0.3; transform: scaleY(0.18); }
+        50%      { opacity: 1;   transform: scaleY(0.55); }
+      }
+
+      .state-transcribing .bar:nth-child(odd),
+      .state-refining .bar:nth-child(odd),
+      .state-injecting .bar:nth-child(odd) {
+        animation-delay: -0.7s;
+      }
+
+      .state-transcribing .bar:nth-child(3n),
+      .state-refining .bar:nth-child(3n),
+      .state-injecting .bar:nth-child(3n) {
+        animation-delay: -0.35s;
+      }
+
+      #status-chip {
+        position: absolute;
+        top: -22px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 10px;
+        letter-spacing: 1.4px;
+        text-transform: uppercase;
+        padding: 3px 8px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #aaa;
+        opacity: 0;
+        pointer-events: none;
+        white-space: nowrap;
+        transition: opacity 200ms ease;
+      }
+
+      #overlay:hover #status-chip,
+      .state-recording #status-chip,
+      .state-transcribing #status-chip,
+      .state-refining #status-chip,
+      .state-injecting #status-chip,
+      .state-done #status-chip,
+      .state-error #status-chip {
+        opacity: 1;
+      }
+
+      .state-recording #status-chip { color: var(--recording); }
+      .state-transcribing #status-chip,
+      .state-refining #status-chip,
+      .state-injecting #status-chip { color: var(--processing); }
+      .state-done #status-chip { color: var(--done); }
+      .state-error #status-chip { color: var(--error); }
+
+      #info-tooltip {
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-32px);
+        padding: 6px 10px;
+        font-size: 10px;
+        line-height: 1.4;
+        color: #aaa;
+        background: rgba(10, 10, 14, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 6px;
-        background: #1a1a1a;
-        color: #9ca3af;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 150ms ease;
       }
-      #status.recording {
-        color: #f87171;
-        background: #3f1515;
-      }
-      #status.transcribing {
-        color: #fbbf24;
-      }
-      #status.refining {
-        color: #60a5fa;
-      }
-      #status.injecting {
-        color: #a78bfa;
-      }
-      #status.done {
-        color: #34d399;
-      }
-      #status.error {
-        color: #f87171;
-      }
-      #hint {
-        margin-top: 12px;
-        font-size: 11px;
-        color: #555;
+
+      #overlay:hover #info-tooltip {
+        opacity: 1;
       }
     </style>
   </head>
   <body>
-    <div id="brand">MURMUR</div>
-    <div id="status" class="idle">idle</div>
-    <div id="hint">Hold Ctrl+Shift+Space to record</div>
+    <div id="overlay" class="state-idle">
+      <button id="trigger" type="button" title="Click to record, or hold the global hotkey">
+        <span id="logo-wrap"></span>
+      </button>
+      <div id="bars" aria-hidden="true"></div>
+      <div id="status-chip">idle</div>
+      <div id="info-tooltip">murmur</div>
+    </div>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

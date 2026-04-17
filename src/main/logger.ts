@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { CONFIG } from '../shared/constants.js';
 
 export interface Session {
   readonly dir: string;
@@ -10,7 +9,7 @@ export interface Session {
   writeSystemPrompt(text: string): void;
   writeRefined(text: string): void;
   writeError(err: unknown): void;
-  writeTimings(timings: Record<string, number>): void;
+  writeTimings(timings: Record<string, number | string>): void;
 }
 
 function timestampDirName(d: Date): string {
@@ -22,9 +21,9 @@ function timestampDirName(d: Date): string {
   );
 }
 
-export function createSession(): Session {
+export function createSession(logsDir: string): Session {
   const now = new Date();
-  const dir = path.join(CONFIG.logsDir, timestampDirName(now));
+  const dir = path.join(logsDir, timestampDirName(now));
   mkdirSync(dir, { recursive: true });
 
   return {

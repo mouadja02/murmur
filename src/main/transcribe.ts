@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { CONFIG } from '../shared/constants.js';
+
+export interface TranscribeOptions {
+  cliPath: string;
+  modelPath: string;
+}
 
 export interface TranscribeResult {
   text: string;
@@ -9,15 +13,18 @@ export interface TranscribeResult {
   durationMs: number;
 }
 
-export async function transcribe(wavPath: string): Promise<TranscribeResult> {
+export async function transcribe(
+  wavPath: string,
+  opts: TranscribeOptions,
+): Promise<TranscribeResult> {
   const outPrefix = path.join(path.dirname(wavPath), 'transcription');
-  const args = ['-m', CONFIG.whisperModelPath, '-f', wavPath, '-nt', '-otxt', '-of', outPrefix];
+  const args = ['-m', opts.modelPath, '-f', wavPath, '-nt', '-otxt', '-of', outPrefix];
 
   const started = Date.now();
   let stderr = '';
 
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn(CONFIG.whisperCliPath, args, { windowsHide: true });
+    const proc = spawn(opts.cliPath, args, { windowsHide: true });
     proc.stderr.on('data', (b: Buffer) => {
       stderr += b.toString();
     });

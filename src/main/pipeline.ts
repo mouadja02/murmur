@@ -1,12 +1,12 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
-import { CONFIG } from '../shared/constants.js';
 import { IPC_START_RECORDING, IPC_STATUS, IPC_STOP_RECORDING, type Status } from '../shared/ipc.js';
 import { SYSTEM_PROMPT } from '../shared/prompts.js';
+import type { ResolvedConfig } from './config/index.js';
 import { pasteAtCursor } from './inject.js';
 import { createSession, type Session } from './logger.js';
-import { refine } from './refine.js';
+import type { LlmProvider } from './providers/index.js';
 import { transcribe } from './transcribe.js';
 import { buildWav } from './wav.js';
 
@@ -15,16 +15,26 @@ type PipelineState = 'idle' | 'recording' | 'processing';
 const AUDIO_TIMEOUT_MS = 10_000;
 const STATUS_LINGER_MS = 1_500;
 
+export interface PipelineDeps {
+  cfg: ResolvedConfig;
+  provider: LlmProvider;
+  getWindow: () => BrowserWindow | null;
+}
+
 export class Pipeline {
   private state: PipelineState = 'idle';
   private session: Session | null = null;
   private audioTimeout: NodeJS.Timeout | null = null;
   private idleTimeout: NodeJS.Timeout | null = null;
 
-  constructor(private readonly getWindow: () => BrowserWindow | null) {}
+  constructor(private readonly deps: PipelineDeps) {}
+
+  isRecording(): boolean {
+    return this.state === 'recording';
+  }
 
   private setStatus(s: Status): void {
-    this.getWindow()?.webContents.send(IPC_STATUS, s);
+    this.deps.getWindow()?.webContents.send(IPC_STATUS, s);
   }
 
   private scheduleIdle(delay = STATUS_LINGER_MS): void {
@@ -49,10 +59,10 @@ export class Pipeline {
     }
     this.cancelIdle();
     this.state = 'recording';
-    this.session = createSession();
+    this.session = createSession(this.deps.cfg.logsDir);
     console.log(`[pipeline] session=${this.session.dir}`);
     this.setStatus('recording');
-    this.getWindow()?.webContents.send(IPC_START_RECORDING);
+    this.deps.getWindow()?.webContents.send(IPC_START_RECORDING);
   }
 
   stop(): void {
@@ -60,7 +70,7 @@ export class Pipeline {
       console.warn(`[pipeline] stop ignored: state=${this.state}`);
       return;
     }
-    this.getWindow()?.webContents.send(IPC_STOP_RECORDING);
+    this.deps.getWindow()?.webContents.send(IPC_STOP_RECORDING);
 
     this.audioTimeout = setTimeout(() => {
       if (this.state === 'recording') {
@@ -68,6 +78,12 @@ export class Pipeline {
         this.reset();
       }
     }, AUDIO_TIMEOUT_MS);
+  }
+
+  toggle(): void {
+    if (this.state === 'idle') this.start();
+    else if (this.state === 'recording') this.stop();
+    // ignored while processing
   }
 
   private reset(): void {
@@ -101,20 +117,24 @@ export class Pipeline {
     this.state = 'processing';
     this.session = null;
 
-    const timings: Record<string, number> = {};
+    const { cfg, provider } = this.deps;
+    const timings: Record<string, number | string> = { provider: provider.config.id };
     const pipelineStart = Date.now();
 
     try {
       const pcm = Buffer.from(buffer);
-      const wav = buildWav(pcm, CONFIG.sampleRate);
+      const wav = buildWav(pcm, cfg.sampleRate);
       session.writeAudio(wav);
       const wavPath = path.join(session.dir, 'audio.wav');
       timings.audioBytes = wav.length;
-      timings.audioDurationMs = Math.round((pcm.length / 2 / CONFIG.sampleRate) * 1000);
+      timings.audioDurationMs = Math.round((pcm.length / 2 / cfg.sampleRate) * 1000);
 
       this.setStatus('transcribing');
       const tStart = Date.now();
-      const { text: transcription, stderr: whisperStderr } = await transcribe(wavPath);
+      const { text: transcription, stderr: whisperStderr } = await transcribe(wavPath, {
+        cliPath: cfg.whisperCliPath,
+        modelPath: cfg.whisperModelPath,
+      });
       timings.transcribeMs = Date.now() - tStart;
       session.writeTranscription(transcription);
       writeFileSync(path.join(session.dir, 'whisper-stderr.log'), whisperStderr, 'utf8');
@@ -129,18 +149,21 @@ export class Pipeline {
       this.setStatus('refining');
       session.writeSystemPrompt(SYSTEM_PROMPT);
       const rStart = Date.now();
-      const { text: refined } = await refine(transcription);
+      const { text: refined } = await provider.refine({
+        systemPrompt: SYSTEM_PROMPT,
+        userPrompt: transcription,
+      });
       timings.refineMs = Date.now() - rStart;
       session.writeRefined(refined);
       console.log(`[pipeline] refined (${timings.refineMs} ms): ${JSON.stringify(refined)}`);
 
       if (!refined) {
-        throw new Error('ollama returned empty refinement');
+        throw new Error(`${provider.config.displayName} returned empty refinement`);
       }
 
       this.setStatus('injecting');
       const iStart = Date.now();
-      await pasteAtCursor(refined);
+      await pasteAtCursor(refined, { clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs });
       timings.injectMs = Date.now() - iStart;
 
       timings.totalMs = Date.now() - pipelineStart;

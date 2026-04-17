@@ -1,64 +1,32 @@
 import { existsSync } from 'node:fs';
-import { CONFIG } from '../shared/constants.js';
+import type { ResolvedConfig } from './config/index.js';
+import type { LlmProvider } from './providers/index.js';
 
 export interface PreflightResult {
   ok: boolean;
   messages: string[];
 }
 
-interface OllamaTagsResponse {
-  models: { name: string; model?: string }[];
-}
-
-export async function runPreflight(): Promise<PreflightResult> {
+export async function runPreflight(
+  cfg: ResolvedConfig,
+  provider: LlmProvider,
+): Promise<PreflightResult> {
   const errors: string[] = [];
 
-  let tagsResponse: OllamaTagsResponse | null = null;
-  try {
-    const res = await fetch(`${CONFIG.ollamaUrl}/api/tags`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) {
-      errors.push(
-        `Ollama at ${CONFIG.ollamaUrl} responded with HTTP ${res.status}. ` +
-          'Is the server running? Start it with: ollama serve',
-      );
-    } else {
-      tagsResponse = (await res.json()) as OllamaTagsResponse;
-    }
-  } catch (err) {
+  const providerError = await provider.preflight();
+  if (providerError) errors.push(providerError);
+
+  if (!existsSync(cfg.whisperCliPath)) {
     errors.push(
-      `Ollama not reachable at ${CONFIG.ollamaUrl} (${(err as Error).message}). ` +
-        'Install from https://ollama.com and run: ollama serve',
+      `whisper.cpp binary not found at ${cfg.whisperCliPath}. ` +
+        'Run: pnpm setup:whisper  (or set --whisper-cli / WHISPER_CLI_PATH)',
     );
   }
 
-  if (tagsResponse) {
-    const has = tagsResponse.models.some(
-      (m) =>
-        m.name === CONFIG.llmModel ||
-        m.name.startsWith(`${CONFIG.llmModel}-`) ||
-        m.name.startsWith(`${CONFIG.llmModel}:`),
-    );
-    if (!has) {
-      errors.push(
-        `LLM model '${CONFIG.llmModel}' not found in Ollama. ` +
-          `Pull it with: ollama pull ${CONFIG.llmModel}`,
-      );
-    }
-  }
-
-  if (!existsSync(CONFIG.whisperCliPath)) {
+  if (!existsSync(cfg.whisperModelPath)) {
     errors.push(
-      `whisper.cpp binary not found at ${CONFIG.whisperCliPath}. ` +
-        'Run: pnpm setup:whisper  (and make sure .env points to the downloaded paths)',
-    );
-  }
-
-  if (!existsSync(CONFIG.whisperModelPath)) {
-    errors.push(
-      `whisper model not found at ${CONFIG.whisperModelPath}. ` +
-        'Run: pnpm setup:whisper  (and make sure .env points to the downloaded paths)',
+      `whisper model not found at ${cfg.whisperModelPath}. ` +
+        'Run: pnpm setup:whisper  (or set --whisper-model / WHISPER_MODEL_PATH)',
     );
   }
 
