@@ -176,19 +176,28 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     if (written) fileLoad = readConfigFile(configFilePath);
   } else if (process.platform !== 'win32' && fileLoad.partial.whisperCliPath) {
     // Migration: if an existing Linux/macOS config has a Windows-style path
-    // (contains backslash or /mnt/c/) or points into a cwd that no longer
-    // exists, reset it to the bare PATH name so the app doesn't fail to start.
+    // (contains backslash or /mnt/c/) or an absolute path that no longer exists
+    // (e.g. was seeded from a stale cwd or user data dir), reset whisperCliPath
+    // to the bare PATH name and whisperModelPath to the user-data-relative path.
     const cli_path = fileLoad.partial.whisperCliPath;
-    const isStaleWindowsPath =
+    const userDataDir = path.dirname(configFilePath);
+    const isStale =
       cli_path.includes('\\') ||
       cli_path.startsWith('/mnt/') ||
       (path.isAbsolute(cli_path) && !existsSync(cli_path));
-    if (isStaleWindowsPath) {
+    if (isStale) {
+      const modelDefault = path.join(userDataDir, 'models', 'ggml-base.en.bin');
       fileLoad = {
         ...fileLoad,
         partial: {
           ...fileLoad.partial,
           whisperCliPath: DEFAULT_CONFIG.whisperCliPath,
+          // Only reset the model path if it's also stale/missing
+          ...(fileLoad.partial.whisperModelPath &&
+          path.isAbsolute(fileLoad.partial.whisperModelPath) &&
+          !existsSync(fileLoad.partial.whisperModelPath)
+            ? { whisperModelPath: modelDefault }
+            : {}),
         },
       };
     }

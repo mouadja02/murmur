@@ -1,9 +1,25 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getUserDataDir, HELP_TEXT, loadConfig, updateConfigFile } from '../config/index.js';
 import { loadSkills } from '../skills.js';
 import { printBanner } from './banner.js';
 import { askMultilineSystemPrompt, askPreLaunchAction } from './prompt.js';
 import { printStatus } from './status.js';
+
+function getVersion(): string {
+  try {
+    const _require = createRequire(import.meta.url);
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const pkgPath = path.resolve(__dirname, '..', '..', '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 
 function controlPanelUrl(port: number): string {
   const effective = port > 0 ? port : 7331;
@@ -25,7 +41,7 @@ async function main(): Promise<void> {
   }
 
   const cfg = loaded.resolved;
-  printBanner();
+  printBanner(getVersion());
 
   const skills = loadSkills(cfg.skillsDir);
   const panelUrl = controlPanelUrl(cfg.controlPanelPort);
