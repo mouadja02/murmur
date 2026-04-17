@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PROVIDER_PRESETS, type ProviderConfig } from '../providers/index.js';
@@ -149,19 +150,48 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
   let fileLoad = readConfigFile(configFilePath);
   let written = false;
   if (!fileLoad.existed) {
-    // Write absolute paths so that future runs from a different cwd still
-    // resolve to the original install's whisper assets / logs / skills dirs.
+    // Write absolute paths into the first-time config so that future runs from
+    // a different cwd still find whisper + logs + skills correctly.
+    //
+    // On Windows we ship whisper under ./bin/whisper/ relative to the install
+    // root (populated by `setup:whisper`), so we resolve against cwd.
+    // On Linux/macOS whisper-cli is a plain PATH command — store just the name,
+    // not an absolute path, so it keeps working after the binary is moved.
+    // The model file is downloaded into the user data dir by `setup:whisper`.
     const cwdBase = process.cwd();
     const userDataDir = path.dirname(configFilePath);
+    const IS_WINDOWS = process.platform === 'win32';
     const seedDefaults = {
       ...DEFAULT_CONFIG,
-      whisperCliPath: path.resolve(cwdBase, DEFAULT_CONFIG.whisperCliPath),
-      whisperModelPath: path.resolve(cwdBase, DEFAULT_CONFIG.whisperModelPath),
+      whisperCliPath: IS_WINDOWS
+        ? path.resolve(cwdBase, DEFAULT_CONFIG.whisperCliPath)
+        : DEFAULT_CONFIG.whisperCliPath, // bare name, resolved via PATH at runtime
+      whisperModelPath: IS_WINDOWS
+        ? path.resolve(cwdBase, DEFAULT_CONFIG.whisperModelPath)
+        : path.join(userDataDir, 'models', 'ggml-base.en.bin'),
       logsDir: path.resolve(cwdBase, DEFAULT_CONFIG.logsDir),
       skillsDir: path.resolve(userDataDir, 'skills'),
     };
     written = writeDefaultConfigIfMissing(configFilePath, seedDefaults);
     if (written) fileLoad = readConfigFile(configFilePath);
+  } else if (process.platform !== 'win32' && fileLoad.partial.whisperCliPath) {
+    // Migration: if an existing Linux/macOS config has a Windows-style path
+    // (contains backslash or /mnt/c/) or points into a cwd that no longer
+    // exists, reset it to the bare PATH name so the app doesn't fail to start.
+    const cli_path = fileLoad.partial.whisperCliPath;
+    const isStaleWindowsPath =
+      cli_path.includes('\\') ||
+      cli_path.startsWith('/mnt/') ||
+      (path.isAbsolute(cli_path) && !existsSync(cli_path));
+    if (isStaleWindowsPath) {
+      fileLoad = {
+        ...fileLoad,
+        partial: {
+          ...fileLoad.partial,
+          whisperCliPath: DEFAULT_CONFIG.whisperCliPath,
+        },
+      };
+    }
   }
 
   const env = readEnv();
