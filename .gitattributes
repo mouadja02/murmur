@@ -1,0 +1,21 @@
+# Normalize every text file to LF on commit regardless of host OS.
+# Keeps biome + CI happy when Windows and Linux contributors share a repo.
+
+* text=auto eol=lf
+
+# Binary files (make sure git never line-ending-mangles them).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.tgz binary
+*.bin binary
+*.wav binary
+*.exe binary
+*.dll binary
+
+# PowerShell scripts are authored on Windows and legitimately prefer CRLF.
+*.ps1 text eol=crlf

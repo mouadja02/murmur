@@ -98,6 +98,75 @@ body {
   text-align: right;
 }
 
+.overlay-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.overlay-label {
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.overlay-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 78px;
+  justify-content: center;
+}
+
+.overlay-state .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.04);
+}
+
+.overlay-state[data-state="visible"] {
+  background: rgba(74, 222, 128, 0.12);
+  color: var(--good);
+}
+.overlay-state[data-state="visible"] .dot {
+  background: var(--good);
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.55);
+}
+
+.overlay-state[data-state="hidden"] {
+  background: rgba(251, 191, 36, 0.1);
+  color: var(--warn);
+}
+.overlay-state[data-state="hidden"] .dot {
+  background: var(--warn);
+}
+
+.btn.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+  min-height: 28px;
+}
+
+.btn.btn-small[disabled] {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .tabs {
   display: flex;
   gap: 4px;

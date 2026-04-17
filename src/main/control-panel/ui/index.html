@@ -16,6 +16,29 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <div class="overlay-control" id="overlay-control" role="group" aria-label="Overlay">
+          <span class="overlay-label">Overlay</span>
+          <span class="overlay-state" id="overlay-state" data-state="unknown">
+            <span class="dot"></span>
+            <span class="text">—</span>
+          </span>
+          <button
+            type="button"
+            id="btn-overlay-show"
+            class="btn btn-small"
+            title="Show the floating overlay pill"
+          >
+            Show
+          </button>
+          <button
+            type="button"
+            id="btn-overlay-hide"
+            class="btn btn-small btn-ghost"
+            title="Hide the floating overlay pill"
+          >
+            Hide
+          </button>
+        </div>
         <button type="button" id="btn-save-all" class="btn btn-primary" title="Save all changes">
           Save all
         </button>

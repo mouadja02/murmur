@@ -25,19 +25,20 @@
       .hint     { font: 400 11px "Segoe UI", Inter, system-ui, sans-serif; fill: #7a7b9a; }
       .pill     { font: 600 11px "Segoe UI", Inter, system-ui, sans-serif; fill: #a78bfa; letter-spacing: 0.8; }
       .stage    { font: 700 11px "Segoe UI", Inter, system-ui, sans-serif; fill: #60a5fa; letter-spacing: 1.4; }
+      .bullet   { font: 400 11px "Segoe UI", Inter, system-ui, sans-serif; fill: #7a7b9a; }
     </style>
   </defs>
 
   <rect width="1240" height="720" fill="url(#bg)"/>
 
-  <text x="60" y="60" class="title">Murmur · end-to-end pipeline</text>
+  <text x="60" y="60" class="title">Murmur end-to-end pipeline</text>
   <text x="60" y="84" class="sub">Everything runs on your machine. No network calls outside your own LLM server.</text>
 
   <g>
-    <text x="60" y="140" class="stage">1 · CAPTURE</text>
-    <text x="380" y="140" class="stage">2 · TRANSCRIBE</text>
-    <text x="720" y="140" class="stage">3 · REFINE</text>
-    <text x="1020" y="140" class="stage">4 · INJECT</text>
+    <text x="60" y="140" class="stage">1. CAPTURE</text>
+    <text x="380" y="140" class="stage">2. TRANSCRIBE</text>
+    <text x="720" y="140" class="stage">3. REFINE</text>
+    <text x="1020" y="140" class="stage">4. INJECT</text>
     <line x1="60" y1="150" x2="1180" y2="150" stroke="#2a2a44" stroke-width="1"/>
   </g>
 
@@ -45,13 +46,13 @@
     <rect width="260" height="140" rx="14" fill="url(#card)" stroke="#2a2a44"/>
     <g transform="translate(20,28)">
       <circle cx="14" cy="14" r="14" fill="#a78bfa" opacity="0.18"/>
-      <path d="M14 6 v10 m-4 -6 v2 m8 -2 v2 m-6 8 h4 m-2 0 v4" transform="translate(0,0)" stroke="#a78bfa" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M14 6 v10 m-4 -6 v2 m8 -2 v2 m-6 8 h4 m-2 0 v4" stroke="#a78bfa" stroke-width="1.6" fill="none" stroke-linecap="round"/>
     </g>
     <text x="56" y="48" class="label">Microphone</text>
     <text x="56" y="68" class="sub">16 kHz mono PCM</text>
     <text x="20" y="102" class="hint">Triggered by</text>
-    <text x="20" y="120" class="hint">· click on overlay</text>
-    <text x="20" y="134" class="hint">· Ctrl + Shift + Space</text>
+    <text x="20" y="120" class="bullet">- click on overlay</text>
+    <text x="20" y="134" class="bullet">- Ctrl + Shift + Space</text>
   </g>
 
   <g transform="translate(360,180)">
@@ -62,9 +63,9 @@
     </g>
     <text x="56" y="48" class="label">whisper.cpp</text>
     <text x="56" y="68" class="sub">local, CPU-only</text>
-    <text x="20" y="102" class="hint">audio.wav  ’  transcription.txt</text>
-    <text x="20" y="120" class="hint">ggml-base.en.bin (147 MB)</text>
-    <text x="20" y="134" class="hint">typical 200800 ms for 5 s</text>
+    <text x="20" y="102" class="bullet">audio.wav -&gt; transcription.txt</text>
+    <text x="20" y="120" class="bullet">ggml-base.en.bin (147 MB)</text>
+    <text x="20" y="134" class="bullet">typical 200-800 ms for 5 s</text>
   </g>
 
   <g transform="translate(680,180)">
@@ -75,9 +76,9 @@
     </g>
     <text x="56" y="48" class="label">LLM provider</text>
     <text x="56" y="68" class="sub">Ollama / LM Studio / llama.cpp</text>
-    <text x="20" y="102" class="hint">system prompt + skills</text>
-    <text x="20" y="120" class="hint">+ raw transcription</text>
-    <text x="20" y="134" class="hint">’ refined prompt</text>
+    <text x="20" y="102" class="bullet">system prompt + skills</text>
+    <text x="20" y="120" class="bullet">+ raw transcription</text>
+    <text x="20" y="134" class="bullet">-&gt; refined prompt</text>
   </g>
 
   <g transform="translate(980,180)">
@@ -88,9 +89,9 @@
     </g>
     <text x="56" y="48" class="label">Your editor</text>
     <text x="56" y="68" class="sub">Cursor / VS Code / ChatGPT</text>
-    <text x="20" y="102" class="hint">clipboard swap</text>
-    <text x="20" y="120" class="hint">+ synthetic Ctrl+V</text>
-    <text x="20" y="134" class="hint">at current cursor</text>
+    <text x="20" y="102" class="bullet">clipboard swap</text>
+    <text x="20" y="120" class="bullet">+ synthetic Ctrl+V</text>
+    <text x="20" y="134" class="bullet">at current cursor</text>
   </g>
 
   <g stroke="url(#accent)" stroke-width="2.2" fill="none" marker-end="url(#arrow)">
@@ -98,14 +99,14 @@
     <path d="M624 250 L676 250"/>
     <path d="M944 250 L976 250"/>
   </g>
-  <g fill="#a78bfa" class="sub">
+  <g fill="#a78bfa">
     <text x="330" y="238" class="pill">WAV</text>
     <text x="630" y="238" class="pill">TEXT</text>
     <text x="950" y="238" class="pill">PROMPT</text>
   </g>
 
   <g transform="translate(60,400)">
-    <text x="0" y="-14" class="stage">CONFIGURATION · persisted to %APPDATA%\murmur\config.json</text>
+    <text x="0" y="-14" class="stage">CONFIGURATION    persisted to %APPDATA%\murmur\config.json (or ~/.config/murmur/)</text>
     <line x1="0" y1="-4" x2="1120" y2="-4" stroke="#2a2a44"/>
   </g>
 
@@ -113,30 +114,30 @@
     <rect width="340" height="140" rx="14" fill="url(#card)" stroke="#2a2a44"/>
     <text x="20" y="34" class="label">Control panel</text>
     <text x="20" y="54" class="sub">browser UI on localhost:7331</text>
-    <text x="20" y="88" class="hint">· edit system prompt</text>
-    <text x="20" y="104" class="hint">· manage skills (enable / import / write)</text>
-    <text x="20" y="120" class="hint">· pick provider · test connection</text>
-    <text x="20" y="136" class="hint">· bind hotkeys · set paths</text>
+    <text x="20" y="88" class="bullet">- edit system prompt</text>
+    <text x="20" y="104" class="bullet">- manage skills (enable / import / write)</text>
+    <text x="20" y="120" class="bullet">- pick provider, test connection</text>
+    <text x="20" y="136" class="bullet">- bind hotkeys, set paths</text>
   </g>
 
   <g transform="translate(440,420)">
     <rect width="340" height="140" rx="14" fill="url(#card)" stroke="#2a2a44"/>
     <text x="20" y="34" class="label">Skills directory</text>
-    <text x="20" y="54" class="sub">./skills/*.md  git-friendly</text>
-    <text x="20" y="88" class="hint">concise-output.md</text>
-    <text x="20" y="104" class="hint">code-context.md</text>
-    <text x="20" y="120" class="hint">& your own</text>
-    <text x="20" y="136" class="hint">enabled skills are merged into the system prompt</text>
+    <text x="20" y="54" class="sub">./skills/*.md (git-friendly)</text>
+    <text x="20" y="88" class="bullet">concise-output.md</text>
+    <text x="20" y="104" class="bullet">code-context.md</text>
+    <text x="20" y="120" class="bullet">&amp; your own</text>
+    <text x="20" y="136" class="bullet">enabled skills are merged into the system prompt</text>
   </g>
 
   <g transform="translate(820,420)">
     <rect width="340" height="140" rx="14" fill="url(#card)" stroke="#2a2a44"/>
     <text x="20" y="34" class="label">Terminal pre-launch</text>
     <text x="20" y="54" class="sub">banner + interactive menu</text>
-    <text x="20" y="88" class="hint">show current setup at a glance</text>
-    <text x="20" y="104" class="hint">tweak system prompt inline</text>
-    <text x="20" y="120" class="hint">jump to control panel</text>
-    <text x="20" y="136" class="hint">continue into Electron</text>
+    <text x="20" y="88" class="bullet">show current setup at a glance</text>
+    <text x="20" y="104" class="bullet">tweak system prompt inline</text>
+    <text x="20" y="120" class="bullet">jump to control panel</text>
+    <text x="20" y="136" class="bullet">continue into Electron</text>
   </g>
 
   <g stroke="#6a6b8a" stroke-dasharray="4 4" stroke-width="1.4" fill="none" marker-end="url(#arrow-dim)">
@@ -148,6 +149,6 @@
   <g transform="translate(60,620)">
     <rect width="1120" height="72" rx="14" fill="url(#card)" stroke="#2a2a44"/>
     <text x="20" y="30" class="label">Session logs</text>
-    <text x="20" y="54" class="sub">logs/&lt;ISO-timestamp&gt;/  audio.wav · transcription.txt · system-prompt.txt · refined.txt · whisper-stderr.log · timings.json</text>
+    <text x="20" y="54" class="sub">logs/&lt;ISO-timestamp&gt;/    audio.wav, transcription.txt, system-prompt.txt, refined.txt, whisper-stderr.log, timings.json</text>
   </g>
 </svg>

@@ -1,13 +1,15 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="Murmur — voice-first prompt engineering for vibe coders" width="100%"/>
+  <img src="docs/banner.svg" alt="Murmur: Voice-first prompt engineering for vibe coders" width="100%"/>
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm" src="https://img.shields.io/npm/v/@mouadja/murmur?color=cb3837&logo=npm&label=npm"/></a>
+  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@mouadja/murmur?color=cb3837&logo=npm&label=downloads"/></a>
   <a href="https://github.com/mouadja02/murmur/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/mouadja02/murmur/actions/workflows/ci.yml/badge.svg"/></a>
   <a href="https://github.com/mouadja02/murmur/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/mouadja02/murmur?include_prereleases&sort=semver"/></a>
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%2010%2B-0078D6"/>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-success"/>
   <img alt="Node" src="https://img.shields.io/badge/node-20%2B-339933"/>
-  <img alt="License" src="https://img.shields.io/badge/license-unlicensed-lightgrey"/>
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue"/>
 </p>
 
 ---
@@ -37,17 +39,53 @@ You stay in flow. No context switch. No "open app, paste, reformat, paste again.
 
 ## Get started
 
-You need **Windows 10/11**, **Node.js 20+**, **pnpm**, a working microphone, and a local LLM server running somewhere (see the table further down if you're not sure which).
+You need **Node.js 20+**, a working microphone, and a local LLM server running somewhere (see the table further down if you're not sure which). Windows 10/11, macOS 12+, and modern Linux (X11; Wayland via Xwayland) are all supported.
 
-```powershell
+### Option A — just try it (no clone, ~15 s)
+
+```bash
+npx @mouadja/murmur
+```
+
+That pulls the published package from npm, runs the pre-launch banner, and spins up the overlay. On the first run it will also prompt you to fetch `whisper.cpp`:
+
+```bash
+# Windows: downloads whisper-cli.exe + ggml-base.en.bin into ./bin/whisper/
+npx @mouadja/murmur setup:whisper
+
+# macOS / Linux: downloads ggml-base.en.bin into ./models/
+# and prints the exact command to install whisper-cli via your package manager
+npx @mouadja/murmur setup:whisper
+```
+
+### Option B — install globally
+
+```bash
+npm install -g @mouadja/murmur
+murmur
+```
+
+After this, `murmur` is on your `PATH` and you can launch it from any terminal.
+
+### Option C — hack on the source
+
+```bash
 git clone https://github.com/mouadja02/murmur.git
 cd murmur
 pnpm install
-pnpm setup:whisper   # downloads whisper-cli.exe + ggml-base.en.bin (~150 MB)
+pnpm setup:whisper
 pnpm dev
 ```
 
-That's it. The first run creates `%APPDATA%\murmur\config.json` with sensible defaults and prints a banner in the terminal. Grab the **control panel URL** it shows (default `http://localhost:7331`) to tweak things in a browser without touching JSON.
+All three options drop you in the same place. The first run creates a config file at `%APPDATA%\murmur\config.json` (Windows), `~/Library/Application Support/murmur/config.json` (macOS), or `~/.config/murmur/config.json` (Linux), with sensible defaults, and prints a banner in the terminal. Grab the **control panel URL** it shows (default `http://localhost:7331`) to tweak things in a browser without touching JSON.
+
+> **Linux runtime deps.** The overlay's global hotkeys + paste injection use `uiohook-napi` + `@nut-tree-fork/nut-js`, which link against X11 at runtime. On Ubuntu/Debian:
+>
+> ```bash
+> sudo apt-get install -y libx11-6 libxtst6 libxkbcommon0
+> ```
+>
+> Most desktops ship these by default; install them if the overlay fails to boot with an `Error loading shared library` message.
 
 > If you don't have a local LLM yet, the fastest path is:
 > ```powershell
@@ -101,7 +139,7 @@ Open it from the overlay (right-click → **Open control panel**), from the pre-
 | **System prompt** | Live-edit the active prompt and see the composed preview (base + enabled skills). |
 | **Skills** | Add, edit, rename, delete skills. One click to enable/disable each. |
 | **Provider** | Switch provider, base URL, model, API key. One-click presets for Ollama / LM Studio / llama.cpp. **Test connection** button reports latency. |
-| **Whisper** | Point to a different `whisper-cli.exe` or `.bin` model. |
+| **Whisper** | Point to a different `whisper-cli` binary (or `whisper-cli.exe` on Windows) or `.bin` model. |
 | **Hotkeys** | Bind push-to-talk and toggle combos with live validation. |
 | **Paths** | Logs dir, skills dir, and the resolved config file path. |
 
@@ -172,6 +210,22 @@ pnpm dev --provider openai-compat --base-url http://localhost:5000/v1 --model my
 | **Right-click** the pill | Context menu: open control panel · hide · reset position · quit |
 | **Hover** the pill | Tooltip with provider · model · both hotkeys · hints |
 
+### From the terminal
+
+After Murmur finishes bootstrapping it prints a compact status block in the terminal with **clickable links** (thanks to OSC-8 hyperlinks — works in Windows Terminal, iTerm2, VS Code, Alacritty, WezTerm, Kitty and most modern emulators):
+
+```
+  o murmur is ready
+    Overlay   show / hide / toggle
+    Panel     http://localhost:7331
+    Hotkeys   Ctrl+Shift+Space (push-to-talk) / Ctrl+Shift+H (toggle)
+```
+
+- **Overlay links** use Murmur's custom `murmur://show`, `murmur://hide`, `murmur://toggle` URL scheme. Clicking them (Ctrl-click in some terminals) routes the action straight into the already-running Murmur instance via Electron's single-instance lock — **no browser tab opens**. Registration happens automatically the first time Murmur starts; on Linux a `.desktop` file is written to `~/.local/share/applications/`.
+- **Panel link** is a regular `http://` URL and opens the control panel in your default browser.
+
+The same overlay controls live in the **Overlay** widget at the top-right of the browser panel, with a live status pill (visible / hidden).
+
 ---
 
 ## Session logs
@@ -210,7 +264,7 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 | `--model <id>` | Model identifier on the provider |
 | `--api-key <key>` | Bearer token (`openai-compat` only) |
 | `--temperature <float>` | Sampling temperature (default `0.2`) |
-| `--whisper-cli <path>` | Path to `whisper-cli.exe` |
+| `--whisper-cli <path>` | Path or `PATH`-resolvable name of `whisper-cli` (`whisper-cli.exe` on Windows) |
 | `--whisper-model <path>` | Path to a `ggml-*.bin` model file |
 | `--hotkey <combo>` | Push-to-talk combo (default `Ctrl+Shift+Space`) |
 | `--toggle-hotkey <combo>` | Show/hide combo (default `Ctrl+Shift+H`) |
@@ -233,7 +287,11 @@ Combo strings parse from `Ctrl+Shift+Space` form. Modifiers: `Ctrl`/`Control`, `
 <details>
 <summary><strong>Config file schema</strong></summary>
 
-`%APPDATA%\murmur\config.json` (auto-created on first run with absolute paths from your install):
+Auto-created on first run, under the OS user-data dir:
+
+- Windows: `%APPDATA%\murmur\config.json`
+- macOS: `~/Library/Application Support/murmur/config.json`
+- Linux: `~/.config/murmur/config.json` (respects `$XDG_CONFIG_HOME`)
 
 ```json
 {
@@ -242,8 +300,8 @@ Combo strings parse from `Ctrl+Shift+Space` form. Modifiers: `Ctrl`/`Control`, `
   "model": "qwen3:4b",
   "apiKey": null,
   "temperature": 0.2,
-  "whisperCliPath": "C:\\path\\to\\bin\\whisper\\whisper-cli.exe",
-  "whisperModelPath": "C:\\path\\to\\bin\\whisper\\models\\ggml-base.en.bin",
+  "whisperCliPath": "whisper-cli",
+  "whisperModelPath": "./models/ggml-base.en.bin",
   "sampleRate": 16000,
   "hotkeyCombo": "Ctrl+Shift+Space",
   "toggleHotkeyCombo": "Ctrl+Shift+H",
@@ -254,8 +312,8 @@ Combo strings parse from `Ctrl+Shift+Space` form. Modifiers: `Ctrl`/`Control`, `
     "offsetY": 24,
     "position": null
   },
-  "logsDir": "C:\\path\\to\\logs",
-  "skillsDir": "C:\\path\\to\\skills",
+  "logsDir": "./logs",
+  "skillsDir": "./skills",
   "systemPrompt": "You refine a raw voice transcription …",
   "enabledSkills": [],
   "controlPanelPort": 7331
@@ -317,7 +375,7 @@ Typical short utterance ("refactor this function to use async await") on a mid-t
 | `pnpm test` | Run the Node built-in test suite against `dist/` |
 | `pnpm test:ci` | `pnpm build && pnpm test` |
 | `pnpm clean` | Remove `dist/` |
-| `pnpm setup:whisper` | Download `whisper-cli.exe` + `ggml-base.en.bin` |
+| `pnpm setup:whisper` | Windows: download `whisper-cli.exe` + `ggml-base.en.bin`. macOS/Linux: download the model + print install hints for `whisper-cli`. |
 
 ### CI
 
@@ -342,17 +400,20 @@ pnpm version patch        # or minor / major
 git push origin main --follow-tags
 ```
 
-The **Release** workflow (`.github/workflows/release.yml`) then:
+The **Release** workflow (`.github/workflows/release.yml`) then runs two jobs in sequence:
 
-1. Checks out the tagged commit.
-2. Verifies `package.json` version matches the tag.
-3. Runs `pnpm check` + `pnpm test:ci`.
-4. Builds the app and zips `dist/ + scripts/ + skills/ + package.json + lockfile + README + logo` into `murmur-v<version>-win-x64.zip`.
-5. Creates a GitHub Release with auto-generated notes (from PR titles since the previous tag) and attaches the zip.
+1. **GitHub Release (Windows bundle)** — checks out the tag, verifies `package.json` matches the tag, runs `pnpm check` + `pnpm test:ci`, builds, zips `bin/ + dist/ + scripts/ + skills/ + docs/ + package.json + lockfile + README + LICENSE + logo` into `murmur-v<version>-win-x64.zip`, and attaches it to an auto-generated GitHub Release.
+2. **npm publish** — on an Ubuntu runner: re-installs, rebuilds, then runs `pnpm publish --access public` using the `NPM_TOKEN` secret. If the token isn't configured the job logs a warning and exits cleanly, so the GitHub Release still ships.
 
 You can also trigger the workflow manually from the Actions tab with a `tag` input (useful for re-releases).
 
-> The package is marked `"private": true` — Murmur ships as a downloadable bundle on GitHub Releases, not as an npm package. Flip `"private"` off and remove it if/when the project becomes a consumable library.
+#### Setting up `NPM_TOKEN` (one-time)
+
+1. Generate an **Automation** token on [npmjs.com → Access Tokens](https://www.npmjs.com/settings/~/tokens) with *Publish* scope (2FA-exempt).
+2. Add it to the GitHub repo at **Settings → Secrets and variables → Actions → New repository secret**, name it `NPM_TOKEN`.
+3. The next tagged push will publish both a GitHub Release and the npm package.
+
+Files shipped to npm are whitelisted in `package.json#files` — run `pnpm pack` locally to inspect exactly what the tarball will contain before publishing.
 
 ### Dependabot
 
@@ -375,4 +436,4 @@ You can also trigger the workflow manually from the Actions tab with a `tag` inp
 
 ## License
 
-Unlicensed. Pre-1.0; APIs and config will change.
+[MIT](./LICENSE) © Mouad Ja. Pre-1.0; APIs and config may still change.

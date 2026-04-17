@@ -11,6 +11,12 @@ importers:
       '@nut-tree-fork/nut-js':
         specifier: ^4.2.6
         version: 4.2.6
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      electron:
+        specifier: ^41.2.1
+        version: 41.2.1
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -30,12 +36,6 @@ importers:
       '@types/prompts':
         specifier: ^2.4.9
         version: 2.4.9
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
-      electron:
-        specifier: ^41.2.1
-        version: 41.2.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

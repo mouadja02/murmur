@@ -14,6 +14,7 @@ import {
   IPC_SHOW_CONTEXT_MENU,
   IPC_TOGGLE_RECORDING,
 } from '../shared/ipc.js';
+import { printReadyBanner } from './cli/status.js';
 import {
   getProviderConfig,
   HELP_TEXT,
@@ -33,6 +34,12 @@ import {
 } from './overlay/window.js';
 import { Pipeline } from './pipeline.js';
 import { runPreflight } from './preflight.js';
+import {
+  findMurmurUrlInArgv,
+  handleFirstInstanceArgv,
+  registerProtocol,
+  wireProtocolEvents,
+} from './protocol/index.js';
 import { createProvider, type LlmProvider, PROVIDER_PRESETS } from './providers/index.js';
 import { beginWindowDrag, endWindowDrag } from './window-drag.js';
 
@@ -44,6 +51,40 @@ let controlPanel: ServerHandle | null = null;
 const hotkey = new HotkeyService();
 
 const POSITION_SAVE_DEBOUNCE_MS = 350;
+
+function openControlPanelExternal(): void {
+  const url = controlPanel?.url ?? 'http://localhost:7331';
+  shell.openExternal(url).catch((err) => {
+    console.error('[main] failed to open control panel:', err);
+  });
+}
+
+const protocolDeps = {
+  getWindow: () => mainWindow,
+  openPanel: openControlPanelExternal,
+};
+
+// Secondary launches of `murmur://...` (triggered by clicking an OSC-8 link
+// while the app is running) should forward their URL to the first instance
+// instead of starting a new Electron process and then immediately exit. This
+// is what makes the terminal click *not* open a browser tab: the OS routes the
+// URL into the existing Murmur window via the single-instance lock.
+//
+// If we're the only instance already, `requestSingleInstanceLock` returns true
+// and we continue booting normally (handling any `murmur://...` URL from our
+// own argv later on).
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  // Nothing else to do; the running instance receives a `second-instance`
+  // event with our argv and handles the URL there.
+} else if (findMurmurUrlInArgv(process.argv) && mainWindow === null && !app.isReady()) {
+  // The very first launch came from a terminal click (e.g. `murmur://show`).
+  // The URL handling runs post-ready in `handleFirstInstanceArgv`, nothing to
+  // do here — this branch exists only to document the intended flow.
+}
+
+// Protocol registration has to happen before `whenReady`.
+registerProtocol();
 
 function buildInfo(l: LoadedConfig, controlPanelUrl: string): InfoPayload {
   const r = l.resolved;
@@ -200,10 +241,7 @@ function wireIPC(): void {
   });
 
   ipcMain.on(IPC_OPEN_CONTROL_PANEL, () => {
-    const url = controlPanel?.url ?? 'http://localhost:7331';
-    shell.openExternal(url).catch((err) => {
-      console.error('[main] failed to open control panel:', err);
-    });
+    openControlPanelExternal();
   });
 
   ipcMain.on(IPC_QUIT, () => {
@@ -278,6 +316,13 @@ async function startPanel(): Promise<void> {
         if (err) return { ok: false, message: err, latencyMs };
         return { ok: true, message: 'reachable', latencyMs };
       },
+      showOverlay: () => {
+        if (mainWindow) showOverlay(mainWindow);
+      },
+      hideOverlay: () => {
+        if (mainWindow) hideOverlay(mainWindow);
+      },
+      isOverlayVisible: () => (mainWindow ? mainWindow.isVisible() : false),
     });
     console.log(`[murmur] control panel: ${controlPanel.url}`);
   } catch (err) {
@@ -356,14 +401,28 @@ async function bootstrap(): Promise<void> {
   wireIPC();
   wireHotkey();
   wireScreenChanges();
+  wireProtocolEvents(protocolDeps);
   await startPanel();
   pushInfoToRenderer();
+
+  printReadyBanner({
+    cfg: loaded.resolved,
+    controlPanelUrl: controlPanel?.url ?? 'http://localhost:7331',
+  });
+
+  // If the process was started with a `murmur://...` URL (first instance),
+  // run it now that the window is alive.
+  handleFirstInstanceArgv(protocolDeps);
 }
 
-bootstrap().catch((err) => {
-  console.error('[murmur] fatal during bootstrap:', err);
-  app.exit(1);
-});
+// If we lost the single-instance lock, don't actually bootstrap — the other
+// process is already live and received our argv via `second-instance`.
+if (app.hasSingleInstanceLock()) {
+  bootstrap().catch((err) => {
+    console.error('[murmur] fatal during bootstrap:', err);
+    app.exit(1);
+  });
+}
 
 app.on('before-quit', () => {
   hotkey.shutdown();
