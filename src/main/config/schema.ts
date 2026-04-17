@@ -2,6 +2,11 @@ import type { ProviderId } from '../providers/index.js';
 
 export type OverlayAnchor = 'bottom-center' | 'bottom-right' | 'top-right' | 'free';
 
+export interface OverlayPosition {
+  x: number;
+  y: number;
+}
+
 /**
  * The fully-resolved runtime config. Every field is required and absolute
  * (paths are resolved relative to `process.cwd()`).
@@ -21,8 +26,10 @@ export interface ResolvedConfig {
   // Audio capture
   sampleRate: number;
 
-  // Hotkey (combo string is informational; the hotkey service hardcodes the combo for now)
+  // Push-to-talk combo (parsed by HotkeyService).
   hotkeyCombo: string;
+  // Tap-to-toggle visibility combo (parsed by HotkeyService).
+  toggleHotkeyCombo: string;
 
   // Injection
   clipboardRestoreDelayMs: number;
@@ -31,6 +38,8 @@ export interface ResolvedConfig {
   overlayAnchor: OverlayAnchor;
   overlayOffsetX: number;
   overlayOffsetY: number;
+  /** Persisted absolute screen position when anchor === 'free'. */
+  overlayPosition: OverlayPosition | null;
 
   // Paths
   logsDir: string;
@@ -54,12 +63,14 @@ export interface PartialConfig {
 
   sampleRate?: number;
   hotkeyCombo?: string;
+  toggleHotkeyCombo?: string;
   clipboardRestoreDelayMs?: number;
 
   overlay?: {
     anchor?: OverlayAnchor;
     offsetX?: number;
     offsetY?: number;
+    position?: OverlayPosition | null;
   };
 
   logsDir?: string;
@@ -106,6 +117,7 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
 
   if (isNumber(obj.sampleRate)) out.sampleRate = obj.sampleRate;
   if (isString(obj.hotkeyCombo)) out.hotkeyCombo = obj.hotkeyCombo;
+  if (isString(obj.toggleHotkeyCombo)) out.toggleHotkeyCombo = obj.toggleHotkeyCombo;
   if (isNumber(obj.clipboardRestoreDelayMs)) {
     out.clipboardRestoreDelayMs = obj.clipboardRestoreDelayMs;
   }
@@ -118,6 +130,11 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
     if (anchor) out.overlay.anchor = anchor;
     if (isNumber(o.offsetX)) out.overlay.offsetX = o.offsetX;
     if (isNumber(o.offsetY)) out.overlay.offsetY = o.offsetY;
+    if (o.position === null) out.overlay.position = null;
+    else if (o.position && typeof o.position === 'object') {
+      const p = o.position as Record<string, unknown>;
+      if (isNumber(p.x) && isNumber(p.y)) out.overlay.position = { x: p.x, y: p.y };
+    }
   }
 
   if (isString(obj.logsDir)) out.logsDir = obj.logsDir;

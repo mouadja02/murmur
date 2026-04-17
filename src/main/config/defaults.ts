@@ -20,6 +20,7 @@ export const DEFAULT_CONFIG: Required<Omit<PartialConfig, 'apiKey' | 'overlay'>>
 
   sampleRate: 16000,
   hotkeyCombo: 'Ctrl+Shift+Space',
+  toggleHotkeyCombo: 'Ctrl+Shift+H',
   clipboardRestoreDelayMs: 150,
 
   overlay: {

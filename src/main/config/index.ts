@@ -4,10 +4,11 @@ import { PROVIDER_PRESETS, type ProviderConfig } from '../providers/index.js';
 import { type CliResult, parseCli } from './cli.js';
 import { DEFAULT_CONFIG } from './defaults.js';
 import { readConfigFile, writeDefaultConfigIfMissing } from './file.js';
-import type { OverlayAnchor, PartialConfig, ResolvedConfig } from './schema.js';
+import type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
 
 export { HELP_TEXT } from './cli.js';
-export type { OverlayAnchor, PartialConfig, ResolvedConfig } from './schema.js';
+export { updateConfigFile } from './file.js';
+export type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
 
 function readEnv(): PartialConfig {
   const e = process.env;
@@ -27,6 +28,7 @@ function readEnv(): PartialConfig {
   if (e.WHISPER_CLI_PATH) partial.whisperCliPath = e.WHISPER_CLI_PATH;
   if (e.WHISPER_MODEL_PATH) partial.whisperModelPath = e.WHISPER_MODEL_PATH;
   if (e.MURMUR_HOTKEY) partial.hotkeyCombo = e.MURMUR_HOTKEY;
+  if (e.MURMUR_TOGGLE_HOTKEY) partial.toggleHotkeyCombo = e.MURMUR_TOGGLE_HOTKEY;
   if (e.MURMUR_LOGS_DIR) partial.logsDir = e.MURMUR_LOGS_DIR;
 
   return partial;
@@ -54,14 +56,20 @@ function mergeOverlay(sources: MergeSources): {
   anchor: OverlayAnchor;
   offsetX: number;
   offsetY: number;
+  position: OverlayPosition | null;
 } {
   const cli = sources.cli.overlay ?? {};
   const file = sources.file.overlay ?? {};
   const env = sources.env.overlay ?? {};
+  // Position only comes from file or CLI; env is awkward to encode coords in.
+  let position: OverlayPosition | null = null;
+  if (cli.position !== undefined) position = cli.position;
+  else if (file.position !== undefined) position = file.position;
   return {
     anchor: pickFirst(cli.anchor, file.anchor, env.anchor) ?? DEFAULT_CONFIG.overlay.anchor,
     offsetX: pickFirst(cli.offsetX, file.offsetX, env.offsetX) ?? DEFAULT_CONFIG.overlay.offsetX,
     offsetY: pickFirst(cli.offsetY, file.offsetY, env.offsetY) ?? DEFAULT_CONFIG.overlay.offsetY,
+    position,
   };
 }
 
@@ -144,6 +152,12 @@ export function loadConfig(argv: readonly string[] = process.argv): LoadedConfig
   const hotkeyCombo =
     pickFirst(sources.cli.hotkeyCombo, sources.file.hotkeyCombo, sources.env.hotkeyCombo) ??
     DEFAULT_CONFIG.hotkeyCombo;
+  const toggleHotkeyCombo =
+    pickFirst(
+      sources.cli.toggleHotkeyCombo,
+      sources.file.toggleHotkeyCombo,
+      sources.env.toggleHotkeyCombo,
+    ) ?? DEFAULT_CONFIG.toggleHotkeyCombo;
   const clipboardRestoreDelayMs =
     pickFirst(
       sources.cli.clipboardRestoreDelayMs,
@@ -167,10 +181,12 @@ export function loadConfig(argv: readonly string[] = process.argv): LoadedConfig
     ),
     sampleRate,
     hotkeyCombo,
+    toggleHotkeyCombo,
     clipboardRestoreDelayMs,
     overlayAnchor: overlay.anchor,
     overlayOffsetX: overlay.offsetX,
     overlayOffsetY: overlay.offsetY,
+    overlayPosition: overlay.position,
     logsDir: resolveLayeredPath(sources, 'logsDir', DEFAULT_CONFIG.logsDir),
     configFilePath,
   };

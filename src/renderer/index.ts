@@ -13,6 +13,8 @@ declare global {
       toggleRecording: () => void;
       requestInfo: () => void;
       setMouseInteractive: (interactive: boolean) => void;
+      hideOverlay: () => void;
+      showContextMenu: () => void;
       quit: () => void;
     };
   }
@@ -24,6 +26,7 @@ interface InfoView {
   baseUrl: string;
   model: string;
   hotkeyCombo: string;
+  toggleHotkeyCombo: string;
   configFilePath: string;
 }
 
@@ -103,7 +106,8 @@ window.murmur.onInfo((info) => {
   infoTooltip.textContent =
     `${info.providerDisplayName} · ${info.model}\n` +
     `${info.baseUrl}\n` +
-    `Hotkey: ${info.hotkeyCombo}`;
+    `PTT ${info.hotkeyCombo}  ·  Toggle ${info.toggleHotkeyCombo}\n` +
+    'Drag to move · Right-click for menu';
   infoTooltip.style.whiteSpace = 'pre';
 });
 
@@ -122,7 +126,8 @@ overlay.addEventListener('mouseleave', () => {
   window.murmur.setMouseInteractive(false);
 });
 
-trigger.addEventListener('contextmenu', (e) => {
+// Right-click anywhere on the overlay opens the native context menu.
+overlay.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  if (confirm('Quit Murmur?')) window.murmur.quit();
+  window.murmur.showContextMenu();
 });

@@ -1,12 +1,14 @@
 import 'dotenv/config';
-import { app, type BrowserWindow, ipcMain, screen } from 'electron';
+import { app, type BrowserWindow, ipcMain, Menu, screen } from 'electron';
 import {
   type InfoPayload,
   IPC_AUDIO_CHUNK,
+  IPC_HIDE_OVERLAY,
   IPC_INFO,
   IPC_QUIT,
   IPC_REQUEST_INFO,
   IPC_SET_MOUSE_INTERACTIVE,
+  IPC_SHOW_CONTEXT_MENU,
   IPC_TOGGLE_RECORDING,
 } from '../shared/ipc.js';
 import {
@@ -15,9 +17,16 @@ import {
   type LoadedConfig,
   loadConfig,
   printResolvedConfig,
+  updateConfigFile,
 } from './config/index.js';
 import { HotkeyService } from './hotkey.js';
-import { createOverlayWindow, positionOverlay } from './overlay/window.js';
+import {
+  createOverlayWindow,
+  hideOverlay,
+  placeOverlay,
+  showOverlay,
+  toggleOverlayVisibility,
+} from './overlay/window.js';
 import { Pipeline } from './pipeline.js';
 import { runPreflight } from './preflight.js';
 import { createProvider, PROVIDER_PRESETS } from './providers/index.js';
@@ -27,6 +36,8 @@ let loaded: LoadedConfig | null = null;
 let pipeline: Pipeline | null = null;
 const hotkey = new HotkeyService();
 
+const POSITION_SAVE_DEBOUNCE_MS = 350;
+
 function buildInfo(l: LoadedConfig): InfoPayload {
   const r = l.resolved;
   return {
@@ -35,8 +46,90 @@ function buildInfo(l: LoadedConfig): InfoPayload {
     baseUrl: r.baseUrl,
     model: r.model,
     hotkeyCombo: r.hotkeyCombo,
+    toggleHotkeyCombo: r.toggleHotkeyCombo,
     configFilePath: r.configFilePath,
   };
+}
+
+function persistOverlayPosition(x: number, y: number): void {
+  if (!loaded) return;
+  loaded.resolved.overlayAnchor = 'free';
+  loaded.resolved.overlayPosition = { x, y };
+  updateConfigFile(loaded.resolved.configFilePath, (raw) => {
+    const overlay = (
+      raw.overlay && typeof raw.overlay === 'object' ? (raw.overlay as Record<string, unknown>) : {}
+    ) as Record<string, unknown>;
+    overlay.anchor = 'free';
+    overlay.position = { x, y };
+    raw.overlay = overlay;
+  });
+}
+
+function clearOverlayPosition(): void {
+  if (!loaded) return;
+  loaded.resolved.overlayPosition = null;
+  updateConfigFile(loaded.resolved.configFilePath, (raw) => {
+    if (raw.overlay && typeof raw.overlay === 'object') {
+      const overlay = raw.overlay as Record<string, unknown>;
+      delete overlay.position;
+    }
+  });
+}
+
+function setupPositionPersistence(win: BrowserWindow): void {
+  let timer: NodeJS.Timeout | null = null;
+  win.on('move', () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      if (win.isDestroyed()) return;
+      const [x, y] = win.getPosition();
+      persistOverlayPosition(x, y);
+    }, POSITION_SAVE_DEBOUNCE_MS);
+  });
+}
+
+function showContextMenu(): void {
+  if (!mainWindow || !loaded) return;
+  const r = loaded.resolved;
+  const providerLabel = `${PROVIDER_PRESETS[r.provider].displayName} · ${r.model}`;
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Hide overlay',
+      accelerator: r.toggleHotkeyCombo,
+      click: () => {
+        if (mainWindow) hideOverlay(mainWindow);
+      },
+    },
+    {
+      label: 'Reset position',
+      enabled: loaded.resolved.overlayPosition !== null,
+      click: () => {
+        clearOverlayPosition();
+        if (mainWindow && loaded) {
+          loaded.resolved.overlayAnchor = 'bottom-center';
+          updateConfigFile(loaded.resolved.configFilePath, (raw) => {
+            if (raw.overlay && typeof raw.overlay === 'object') {
+              (raw.overlay as Record<string, unknown>).anchor = 'bottom-center';
+            }
+          });
+          placeOverlay(mainWindow, loaded.resolved);
+        }
+      },
+    },
+    { type: 'separator' },
+    { label: providerLabel, enabled: false },
+    { label: r.baseUrl, enabled: false },
+    { label: `PTT: ${r.hotkeyCombo}`, enabled: false },
+    { label: `Toggle: ${r.toggleHotkeyCombo}`, enabled: false },
+    { type: 'separator' },
+    {
+      label: 'Quit Murmur',
+      click: () => app.quit(),
+    },
+  ]);
+  menu.popup({ window: mainWindow });
 }
 
 function wireIPC(): void {
@@ -63,26 +156,43 @@ function wireIPC(): void {
     }
   });
 
+  ipcMain.on(IPC_HIDE_OVERLAY, () => {
+    if (mainWindow) hideOverlay(mainWindow);
+  });
+
+  ipcMain.on(IPC_SHOW_CONTEXT_MENU, () => {
+    showContextMenu();
+  });
+
   ipcMain.on(IPC_QUIT, () => {
     app.quit();
   });
 }
 
 function wireHotkey(): void {
+  if (!loaded) return;
+  const parsed = hotkey.configure({
+    ptt: loaded.resolved.hotkeyCombo,
+    toggle: loaded.resolved.toggleHotkeyCombo,
+  });
+  console.log(
+    `[murmur] hotkeys: PTT=${parsed.ptt ? loaded.resolved.hotkeyCombo : '(invalid)'}` +
+      ` toggle=${parsed.toggle ? loaded.resolved.toggleHotkeyCombo : '(invalid)'}`,
+  );
   hotkey.on('start', () => pipeline?.start());
   hotkey.on('stop', () => pipeline?.stop());
+  hotkey.on('toggle', () => {
+    if (!mainWindow) return;
+    const visible = toggleOverlayVisibility(mainWindow);
+    console.log(`[murmur] overlay ${visible ? 'shown' : 'hidden'} via toggle hotkey`);
+  });
   hotkey.start();
 }
 
 function wireScreenChanges(): void {
   const reposition = () => {
     if (!mainWindow || !loaded) return;
-    positionOverlay(
-      mainWindow,
-      loaded.resolved.overlayAnchor,
-      loaded.resolved.overlayOffsetX,
-      loaded.resolved.overlayOffsetY,
-    );
+    placeOverlay(mainWindow, loaded.resolved);
   };
   screen.on('display-metrics-changed', reposition);
   screen.on('display-added', reposition);
@@ -136,6 +246,8 @@ async function bootstrap(): Promise<void> {
     getWindow: () => mainWindow,
   });
 
+  setupPositionPersistence(mainWindow);
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.showInactive();
     if (loaded) mainWindow?.webContents.send(IPC_INFO, buildInfo(loaded));
@@ -161,4 +273,9 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => {
   app.quit();
+});
+
+// Re-show the overlay on macOS dock-click / Windows taskbar reactivation.
+app.on('activate', () => {
+  if (mainWindow) showOverlay(mainWindow);
 });

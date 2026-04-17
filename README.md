@@ -119,13 +119,17 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 | `--temperature <float>` | Sampling temperature (default `0.2`) |
 | `--whisper-cli <path>` | Path to `whisper-cli.exe` |
 | `--whisper-model <path>` | Path to a `ggml-*.bin` model file |
-| `--hotkey <combo>` | Informational only for now (PTT is hardcoded) |
+| `--hotkey <combo>` | Push-to-talk combo (default `Ctrl+Shift+Space`) |
+| `--toggle-hotkey <combo>` | Show/hide overlay combo (default `Ctrl+Shift+H`) |
 | `--logs-dir <path>` | Per-session logs directory |
 | `--overlay-anchor <bottom-center \| bottom-right \| top-right \| free>` | Where to dock the overlay |
 | `--overlay-offset-x <px>` / `--overlay-offset-y <px>` | Overlay offset from the anchor |
+| `--overlay-position <x,y>` | Force a free-floating screen position; auto-set when you drag the pill |
 | `--config <path>` | Override the config file location |
 | `--print-config` | Print the resolved config and exit |
 | `-h`, `--help` | Show help and exit |
+
+Combo strings parse from `Ctrl+Shift+Space` form. Modifiers accept `Ctrl` / `Control`, `Shift`, `Alt` / `Option`, `Cmd` / `Win` / `Meta` / `Super`. Keys accept letters (`A`-`Z`), digits, `Space`, `Enter`, `Tab`, `Escape`, `F1`-`F12`, etc.
 
 ### Config file schema
 
@@ -142,13 +146,19 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
   "whisperModelPath": "C:\\path\\to\\bin\\whisper\\models\\ggml-base.en.bin",
   "sampleRate": 16000,
   "hotkeyCombo": "Ctrl+Shift+Space",
+  "toggleHotkeyCombo": "Ctrl+Shift+H",
   "clipboardRestoreDelayMs": 150,
-  "overlay": { "anchor": "bottom-center", "offsetX": 0, "offsetY": 24 },
+  "overlay": {
+    "anchor": "bottom-center",
+    "offsetX": 0,
+    "offsetY": 24,
+    "position": null
+  },
   "logsDir": "C:\\path\\to\\logs"
 }
 ```
 
-Any field can be omitted; missing fields fall through to defaults.
+Any field can be omitted; missing fields fall through to defaults. `overlay.position` is written automatically the first time you drag the pill — at that point `overlay.anchor` is also flipped to `"free"` so the new spot survives restarts. Right-click → **Reset position** clears it.
 
 ### Environment variables (legacy)
 
@@ -164,6 +174,7 @@ Still supported, mostly for development:
 | `WHISPER_CLI_PATH` | `whisperCliPath` |
 | `WHISPER_MODEL_PATH` | `whisperModelPath` |
 | `MURMUR_HOTKEY` | `hotkeyCombo` |
+| `MURMUR_TOGGLE_HOTKEY` | `toggleHotkeyCombo` |
 | `MURMUR_LOGS_DIR` | `logsDir` |
 
 ---
@@ -196,14 +207,17 @@ If any check fails, Murmur prints a clear error and exits. Fix it and re-run.
 | Action | Behaviour |
 | --- | --- |
 | **Click** the logo | Toggles recording (start / stop) |
-| **Hold** `Ctrl+Shift+Space` | Push-to-talk: records while held, processes on release |
-| **Drag** anywhere on the visible pill (not on the logo) | Repositions the overlay window |
-| **Right-click** the logo | Confirm-to-quit prompt |
-| **Hover** the overlay | Shows a small tooltip with the active provider, model, base URL and hotkey |
+| **Hold** PTT combo (default `Ctrl+Shift+Space`) | Push-to-talk: records while held, processes on release |
+| **Tap** toggle combo (default `Ctrl+Shift+H`) | Show / hide the overlay (works whether visible or hidden — it's the "reopen" path too) |
+| **Drag** anywhere on the visible pill | Moves the overlay; position is saved to `config.json` and survives restart |
+| **Right-click** the pill | Native context menu: Hide, Reset position, the active provider/model/base URL/hotkeys, Quit |
+| **Hover** the overlay | Tooltip with provider · model · base URL · both hotkeys · interaction hints |
+
+The toggle hotkey and PTT hotkey are independent. If you forget the toggle combo and have already hidden the overlay, re-running `pnpm dev` always brings it back at the saved position.
 
 ### Stopping
 
-- Right-click the logo → confirm quit, or
+- Right-click the pill → **Quit Murmur**, or
 - Hit `Ctrl+C` in the `pnpm dev` terminal, or
 - `taskkill /F /IM electron.exe`
 
@@ -262,8 +276,8 @@ Typical short utterance ("refactor this function to use async await") on a mid-t
 3. **Paste-based injection only**, no per-target typing fallback.
 4. **No VAD / silence trimming.** Trailing "uhh" and dead air get transcribed and fed to the LLM.
 5. **Renderer uses the deprecated `ScriptProcessorNode`.** Move to `AudioWorklet` before any non-spike build.
-6. **Hotkey combo is hardcoded** (`Ctrl+Shift+Space`). Configurable hotkey routing through `uiohook-napi` is queued.
-7. **No tray icon.** If the overlay is dragged off-screen on a single-monitor setup, there's no way to recall it short of restarting.
+6. **No tray icon.** Hide / show is handled by the toggle hotkey and the right-click context menu; restart re-shows the overlay if you ever lose the toggle binding. A tray fallback is queued.
+7. **Off-screen drag is auto-clamped on relaunch.** The saved free position is clamped to the nearest connected display's work area on launch, so a saved position from a now-disconnected monitor doesn't strand the overlay.
 8. **Single utterance at a time.** Concurrent recordings are dropped; queueing is not implemented.
 
 ---

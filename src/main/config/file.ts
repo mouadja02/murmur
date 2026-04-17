@@ -54,3 +54,36 @@ export function writeDefaultConfigIfMissing(
   writeFileSync(filePath, `${body}\n`, 'utf8');
   return true;
 }
+
+/**
+ * Read-modify-write the config file, preserving fields we don't know about.
+ * Used for runtime mutations like persisting the dragged overlay position.
+ */
+export function updateConfigFile(
+  filePath: string,
+  mutator: (raw: Record<string, unknown>) => void,
+): boolean {
+  let raw: Record<string, unknown> = {};
+  try {
+    const content = readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      raw = parsed as Record<string, unknown>;
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn(`[config] could not read ${filePath} for update:`, (err as Error).message);
+      // fall through and write a fresh file
+    }
+  }
+  try {
+    mutator(raw);
+    const dir = path.dirname(filePath);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(filePath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+    return true;
+  } catch (err) {
+    console.warn(`[config] could not write ${filePath}:`, (err as Error).message);
+    return false;
+  }
+}

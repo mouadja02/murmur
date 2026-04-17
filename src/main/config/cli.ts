@@ -86,6 +86,7 @@ export function parseCli(argv: readonly string[]): CliResult {
   if (typeof raw['whisper-cli'] === 'string') candidate.whisperCliPath = raw['whisper-cli'];
   if (typeof raw['whisper-model'] === 'string') candidate.whisperModelPath = raw['whisper-model'];
   if (typeof raw.hotkey === 'string') candidate.hotkeyCombo = raw.hotkey;
+  if (typeof raw['toggle-hotkey'] === 'string') candidate.toggleHotkeyCombo = raw['toggle-hotkey'];
   if (typeof raw['logs-dir'] === 'string') candidate.logsDir = raw['logs-dir'];
 
   const overlay: Record<string, unknown> = {};
@@ -97,6 +98,10 @@ export function parseCli(argv: readonly string[]): CliResult {
   if (typeof raw['overlay-offset-y'] === 'string') {
     const n = Number(raw['overlay-offset-y']);
     if (Number.isFinite(n)) overlay.offsetY = n;
+  }
+  if (typeof raw['overlay-position'] === 'string') {
+    const m = raw['overlay-position'].match(/^(-?\d+)\s*,\s*(-?\d+)$/);
+    if (m) overlay.position = { x: Number(m[1]), y: Number(m[2]) };
   }
   if (Object.keys(overlay).length > 0) candidate.overlay = overlay;
 
@@ -122,13 +127,15 @@ Local STT:
   --whisper-cli <path>                Path to whisper-cli.exe
   --whisper-model <path>              Path to a ggml-*.bin model file
 
-Hotkey / capture:
-  --hotkey <combo>                    Informational only for now (PTT is Ctrl+Shift+Space)
+Hotkeys (combo strings parsed from "Ctrl+Shift+Space" form):
+  --hotkey <combo>                    Push-to-talk combo (default Ctrl+Shift+Space)
+  --toggle-hotkey <combo>             Show/hide overlay (default Ctrl+Shift+H)
 
 Overlay window:
   --overlay-anchor <bottom-center|bottom-right|top-right|free>
   --overlay-offset-x <px>
   --overlay-offset-y <px>
+  --overlay-position <x,y>            Forces a free position; auto-set when you drag the pill
 
 Config file:
   --config <path>                     Override config file location

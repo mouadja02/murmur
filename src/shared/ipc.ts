@@ -9,6 +9,8 @@ export const IPC_AUDIO_CHUNK = 'murmur:audio-chunk';
 export const IPC_TOGGLE_RECORDING = 'murmur:toggle-recording';
 export const IPC_REQUEST_INFO = 'murmur:request-info';
 export const IPC_SET_MOUSE_INTERACTIVE = 'murmur:set-mouse-interactive';
+export const IPC_HIDE_OVERLAY = 'murmur:hide-overlay';
+export const IPC_SHOW_CONTEXT_MENU = 'murmur:show-context-menu';
 export const IPC_QUIT = 'murmur:quit';
 
 export type Status =
@@ -30,5 +32,6 @@ export interface InfoPayload {
   baseUrl: string;
   model: string;
   hotkeyCombo: string;
+  toggleHotkeyCombo: string;
   configFilePath: string;
 }

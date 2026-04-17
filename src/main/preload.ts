@@ -2,10 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   type InfoPayload,
   IPC_AUDIO_CHUNK,
+  IPC_HIDE_OVERLAY,
   IPC_INFO,
   IPC_QUIT,
   IPC_REQUEST_INFO,
   IPC_SET_MOUSE_INTERACTIVE,
+  IPC_SHOW_CONTEXT_MENU,
   IPC_START_RECORDING,
   IPC_STATUS,
   IPC_STOP_RECORDING,
@@ -37,6 +39,12 @@ contextBridge.exposeInMainWorld('murmur', {
   },
   setMouseInteractive: (interactive: boolean) => {
     ipcRenderer.send(IPC_SET_MOUSE_INTERACTIVE, interactive);
+  },
+  hideOverlay: () => {
+    ipcRenderer.send(IPC_HIDE_OVERLAY);
+  },
+  showContextMenu: () => {
+    ipcRenderer.send(IPC_SHOW_CONTEXT_MENU);
   },
   quit: () => {
     ipcRenderer.send(IPC_QUIT);
