@@ -1,6 +1,6 @@
 {
   "name": "@mouadja02/murmur",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Voice-first prompt engineering for vibe coders. Floating overlay that turns your voice into clean, structured prompts using local Whisper + your own local LLM.",
   "private": false,
   "type": "module",
