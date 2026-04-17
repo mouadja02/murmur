@@ -1,13 +1,13 @@
 import 'dotenv/config';
-import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, type BrowserWindow, ipcMain, screen } from 'electron';
 import {
+  type InfoPayload,
   IPC_AUDIO_CHUNK,
   IPC_INFO,
   IPC_QUIT,
   IPC_REQUEST_INFO,
   IPC_SET_MOUSE_INTERACTIVE,
   IPC_TOGGLE_RECORDING,
-  type InfoPayload,
 } from '../shared/ipc.js';
 import {
   getProviderConfig,

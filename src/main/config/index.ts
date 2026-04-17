@@ -6,8 +6,8 @@ import { DEFAULT_CONFIG } from './defaults.js';
 import { readConfigFile, writeDefaultConfigIfMissing } from './file.js';
 import type { OverlayAnchor, PartialConfig, ResolvedConfig } from './schema.js';
 
-export type { ResolvedConfig, PartialConfig, OverlayAnchor } from './schema.js';
 export { HELP_TEXT } from './cli.js';
+export type { OverlayAnchor, PartialConfig, ResolvedConfig } from './schema.js';
 
 function readEnv(): PartialConfig {
   const e = process.env;
@@ -102,10 +102,21 @@ export function loadConfig(argv: readonly string[] = process.argv): LoadedConfig
     cli.configFilePath ?? path.join(app.getPath('userData'), 'config.json'),
   );
 
-  const fileLoad = readConfigFile(configFilePath);
-  const written = !fileLoad.existed
-    ? writeDefaultConfigIfMissing(configFilePath, DEFAULT_CONFIG)
-    : false;
+  let fileLoad = readConfigFile(configFilePath);
+  let written = false;
+  if (!fileLoad.existed) {
+    // Write absolute paths so that future runs from a different cwd still
+    // resolve to the original install's whisper assets / logs directory.
+    const cwdBase = process.cwd();
+    const seedDefaults = {
+      ...DEFAULT_CONFIG,
+      whisperCliPath: path.resolve(cwdBase, DEFAULT_CONFIG.whisperCliPath),
+      whisperModelPath: path.resolve(cwdBase, DEFAULT_CONFIG.whisperModelPath),
+      logsDir: path.resolve(cwdBase, DEFAULT_CONFIG.logsDir),
+    };
+    written = writeDefaultConfigIfMissing(configFilePath, seedDefaults);
+    if (written) fileLoad = readConfigFile(configFilePath);
+  }
 
   const env = readEnv();
 

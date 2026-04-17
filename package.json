@@ -6,8 +6,9 @@
   "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
-    "dev": "tsc && node scripts/copy-html.mjs && electron .",
-    "build": "tsc && node scripts/copy-html.mjs",
+    "clean": "node scripts/clean.mjs",
+    "dev": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs && electron .",
+    "build": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs",
     "check": "tsc --noEmit && biome check .",
     "format": "biome format --write .",
     "setup:whisper": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-whisper.ps1"

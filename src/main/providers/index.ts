@@ -2,21 +2,25 @@ import { OllamaProvider } from './ollama.js';
 import { OpenAiCompatProvider } from './openai-compat.js';
 import type { LlmProvider, ProviderConfig, ProviderId } from './types.js';
 
-export type { LlmProvider, ProviderConfig, ProviderId, RefineRequest, RefineResponse } from './types.js';
-
-export const PROVIDER_PRESETS: Record<
+export type {
+  LlmProvider,
+  ProviderConfig,
   ProviderId,
-  { displayName: string; defaultBaseUrl: string }
-> = {
-  ollama: {
-    displayName: 'Ollama',
-    defaultBaseUrl: 'http://localhost:11434',
-  },
-  'openai-compat': {
-    displayName: 'OpenAI-compatible',
-    defaultBaseUrl: 'http://localhost:1234/v1', // LM Studio default
-  },
-};
+  RefineRequest,
+  RefineResponse,
+} from './types.js';
+
+export const PROVIDER_PRESETS: Record<ProviderId, { displayName: string; defaultBaseUrl: string }> =
+  {
+    ollama: {
+      displayName: 'Ollama',
+      defaultBaseUrl: 'http://localhost:11434',
+    },
+    'openai-compat': {
+      displayName: 'OpenAI-compatible',
+      defaultBaseUrl: 'http://localhost:1234/v1', // LM Studio default
+    },
+  };
 
 export function createProvider(config: ProviderConfig): LlmProvider {
   switch (config.id) {

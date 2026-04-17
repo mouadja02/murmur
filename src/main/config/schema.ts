@@ -77,7 +77,9 @@ function isNumber(v: unknown): v is number {
 }
 
 function pick<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
-  return isString(value) && (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
+  return isString(value) && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : undefined;
 }
 
 /**

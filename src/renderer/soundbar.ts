@@ -71,10 +71,10 @@ export function createSoundbar(container: HTMLElement): SoundbarController {
       running = false;
       if (raf !== null) cancelAnimationFrame(raf);
       raf = null;
-      // settle bars back to baseline
+      // Clear inline transforms so per-state CSS (done/error/etc.) wins.
       for (let i = 0; i < BAR_COUNT; i++) {
         heights[i] = MIN_HEIGHT;
-        bars[i]?.style.setProperty('transform', `scaleY(${MIN_HEIGHT})`);
+        bars[i]?.style.removeProperty('transform');
       }
     },
   };

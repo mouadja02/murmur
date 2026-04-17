@@ -1,4 +1,6 @@
+import { LOGO_SVG } from './logo.js';
 import { startCapture, stopCapture } from './recorder.js';
+import { createSoundbar } from './soundbar.js';
 
 declare global {
   interface Window {
@@ -6,17 +8,77 @@ declare global {
       onStatus: (cb: (status: string) => void) => void;
       onStartRecording: (cb: () => void) => void;
       onStopRecording: (cb: () => void) => void;
+      onInfo: (cb: (info: InfoView) => void) => void;
       sendAudioChunk: (buffer: ArrayBuffer) => void;
+      toggleRecording: () => void;
+      requestInfo: () => void;
+      setMouseInteractive: (interactive: boolean) => void;
+      quit: () => void;
     };
   }
 }
 
-const statusEl = document.getElementById('status');
-if (!statusEl) throw new Error('status element missing');
+interface InfoView {
+  provider: string;
+  providerDisplayName: string;
+  baseUrl: string;
+  model: string;
+  hotkeyCombo: string;
+  configFilePath: string;
+}
+
+const STATES = [
+  'idle',
+  'recording',
+  'transcribing',
+  'refining',
+  'injecting',
+  'done',
+  'error',
+] as const;
+
+type StateName = (typeof STATES)[number];
+
+const overlay = required<HTMLDivElement>('overlay');
+const trigger = required<HTMLButtonElement>('trigger');
+const logoWrap = required<HTMLSpanElement>('logo-wrap');
+const barsEl = required<HTMLDivElement>('bars');
+const statusChip = required<HTMLDivElement>('status-chip');
+const infoTooltip = required<HTMLDivElement>('info-tooltip');
+
+logoWrap.innerHTML = LOGO_SVG;
+
+function required<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`#${id} missing`);
+  return el as T;
+}
+
+const soundbar = createSoundbar(barsEl);
+
+function setState(state: StateName): void {
+  for (const s of STATES) overlay.classList.remove(`state-${s}`);
+  overlay.classList.add(`state-${state}`);
+  statusChip.textContent = state;
+
+  if (state === 'recording') {
+    overlay.classList.add('expanded');
+    soundbar.start();
+  } else if (state === 'idle') {
+    overlay.classList.remove('expanded');
+    soundbar.stop();
+  } else {
+    overlay.classList.add('expanded');
+    soundbar.stop();
+  }
+}
+
+setState('idle');
 
 window.murmur.onStatus((s) => {
-  statusEl.textContent = s;
-  statusEl.className = s;
+  if ((STATES as readonly string[]).includes(s)) {
+    setState(s as StateName);
+  }
 });
 
 window.murmur.onStartRecording(async () => {
@@ -35,4 +97,32 @@ window.murmur.onStopRecording(async () => {
     console.error('[renderer] stopCapture failed:', err);
     window.murmur.sendAudioChunk(new ArrayBuffer(0));
   }
+});
+
+window.murmur.onInfo((info) => {
+  infoTooltip.textContent =
+    `${info.providerDisplayName} · ${info.model}\n` +
+    `${info.baseUrl}\n` +
+    `Hotkey: ${info.hotkeyCombo}`;
+  infoTooltip.style.whiteSpace = 'pre';
+});
+
+window.murmur.requestInfo();
+
+trigger.addEventListener('click', (e) => {
+  e.stopPropagation();
+  window.murmur.toggleRecording();
+});
+
+// Toggle window-level mouse passthrough so transparent areas don't eat clicks.
+overlay.addEventListener('mouseenter', () => {
+  window.murmur.setMouseInteractive(true);
+});
+overlay.addEventListener('mouseleave', () => {
+  window.murmur.setMouseInteractive(false);
+});
+
+trigger.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (confirm('Quit Murmur?')) window.murmur.quit();
 });

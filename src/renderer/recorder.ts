@@ -8,7 +8,7 @@ interface CaptureState {
   processor: ScriptProcessorNode;
   mute: GainNode;
   analyser: AnalyserNode;
-  freqBuffer: Uint8Array;
+  freqBuffer: Uint8Array<ArrayBuffer>;
   chunks: Float32Array[];
   sourceSampleRate: number;
 }
@@ -82,7 +82,7 @@ export async function startCapture(): Promise<void> {
     processor,
     mute,
     analyser,
-    freqBuffer: new Uint8Array(analyser.frequencyBinCount),
+    freqBuffer: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)),
     chunks,
     sourceSampleRate: audioContext.sampleRate,
   };
@@ -123,7 +123,7 @@ export function isCapturing(): boolean {
  * Reads the current frequency-domain data into the recorder's internal buffer
  * and returns it. Returns `null` when not capturing.
  */
-export function readFrequencies(): Uint8Array | null {
+export function readFrequencies(): Uint8Array<ArrayBuffer> | null {
   if (!state) return null;
   state.analyser.getByteFrequencyData(state.freqBuffer);
   return state.freqBuffer;

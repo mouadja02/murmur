@@ -187,14 +187,14 @@
         animation: shimmer 1.4s ease-in-out infinite;
       }
 
-      .state-done .bar {
+      #overlay.state-done .bar {
         background: linear-gradient(180deg, #6ee7b7, var(--done));
-        transform: scaleY(0.55) !important;
+        transform: scaleY(0.55);
       }
 
-      .state-error .bar {
+      #overlay.state-error .bar {
         background: linear-gradient(180deg, #fca5a5, var(--error));
-        transform: scaleY(0.5) !important;
+        transform: scaleY(0.5);
       }
 
       @keyframes shimmer {

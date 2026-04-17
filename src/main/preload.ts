@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
+  type InfoPayload,
   IPC_AUDIO_CHUNK,
   IPC_INFO,
   IPC_QUIT,
@@ -9,7 +10,6 @@ import {
   IPC_STATUS,
   IPC_STOP_RECORDING,
   IPC_TOGGLE_RECORDING,
-  type InfoPayload,
   type Status,
 } from '../shared/ipc.js';
 

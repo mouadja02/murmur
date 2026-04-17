@@ -46,7 +46,7 @@ export function parseCli(argv: readonly string[]): CliResult {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (!arg || !arg.startsWith('--')) {
+    if (!arg?.startsWith('--')) {
       if (arg === '-h') raw.help = true;
       continue;
     }

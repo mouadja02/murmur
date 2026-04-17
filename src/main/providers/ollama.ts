@@ -64,7 +64,8 @@ export class OllamaProvider implements LlmProvider {
 
     const wanted = this.config.model;
     const has = tags.models.some(
-      (m) => m.name === wanted || m.name.startsWith(`${wanted}-`) || m.name.startsWith(`${wanted}:`),
+      (m) =>
+        m.name === wanted || m.name.startsWith(`${wanted}-`) || m.name.startsWith(`${wanted}:`),
     );
     if (!has) {
       return `LLM model '${wanted}' not found in Ollama. Pull it with: ollama pull ${wanted}`;
