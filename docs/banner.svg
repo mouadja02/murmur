@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-label="Murmur  voice-first prompt engineering for vibe coders">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0b14"/>
+      <stop offset="50%" stop-color="#131326"/>
+      <stop offset="100%" stop-color="#0b0b14"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="50%" stop-color="#8b8cff"/>
+      <stop offset="100%" stop-color="#60a5fa"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.0"/>
+      <stop offset="15%" stop-color="#a78bfa" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#60a5fa" stop-opacity="1"/>
+      <stop offset="85%" stop-color="#60a5fa" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#8b8cff" stop-opacity="0.25"/>
+      <stop offset="70%" stop-color="#8b8cff" stop-opacity="0.0"/>
+    </radialGradient>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="1.2"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="360" fill="url(#bg)"/>
+  <rect width="1280" height="360" fill="url(#glow)"/>
+
+  <g transform="translate(0,0)" opacity="0.22">
+    <g stroke="#8b8cff" stroke-width="1" fill="none">
+      <path d="M0,60 H1280"/>
+      <path d="M0,120 H1280"/>
+      <path d="M0,180 H1280"/>
+      <path d="M0,240 H1280"/>
+      <path d="M0,300 H1280"/>
+    </g>
+  </g>
+
+  <g transform="translate(80,110)">
+    <g transform="translate(0,20)">
+      <rect x="-8" y="-8" width="116" height="116" rx="28" fill="#1a1a2e" stroke="#2a2a44" stroke-width="1"/>
+      <svg x="6" y="6" width="88" height="88" viewBox="0 0 32 32">
+        <path
+          d="M5 24 V10 a1.5 1.5 0 0 1 2.7 -0.9 L13.5 17 a1 1 0 0 0 1.6 0 L17 14 a1 1 0 0 1 1.6 0 L20.5 17 a1 1 0 0 0 1.6 0 L24.3 9.1 A1.5 1.5 0 0 1 27 10 V24"
+          fill="none"
+          stroke="url(#accent)"
+          stroke-width="2.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle cx="16" cy="22" r="1.6" fill="url(#accent)"/>
+      </svg>
+    </g>
+  </g>
+
+  <g transform="translate(240,180)" font-family="Segoe UI, Inter, -apple-system, system-ui, sans-serif">
+    <text x="0" y="0" font-size="88" font-weight="800" fill="#ffffff" letter-spacing="-2">murmur</text>
+    <text x="0" y="44" font-size="20" font-weight="500" fill="#a8a9c7" letter-spacing="0.4">
+      voice-first prompt engineering for vibe coders
+    </text>
+    <g transform="translate(0,74)" font-size="13" fill="#7a7b9a" letter-spacing="1.4">
+      <text x="0" y="0">LOCAL WHISPER</text>
+      <text x="142" y="0">·</text>
+      <text x="156" y="0">YOUR LLM</text>
+      <text x="254" y="0">·</text>
+      <text x="268" y="0">PASTE AT CURSOR</text>
+      <text x="432" y="0">·</text>
+      <text x="446" y="0">100% OFFLINE</text>
+    </g>
+  </g>
+
+  <g transform="translate(820,180)" stroke="url(#wave)" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M0,0 L20,0"/>
+    <path d="M28,-14 L28,14"/>
+    <path d="M44,-30 L44,30"/>
+    <path d="M60,-46 L60,46"/>
+    <path d="M76,-22 L76,22"/>
+    <path d="M92,-6  L92,6"/>
+    <path d="M108,-34 L108,34"/>
+    <path d="M124,-50 L124,50"/>
+    <path d="M140,-28 L140,28"/>
+    <path d="M156,-12 L156,12"/>
+    <path d="M172,-42 L172,42"/>
+    <path d="M188,-58 L188,58"/>
+    <path d="M204,-40 L204,40"/>
+    <path d="M220,-18 L220,18"/>
+    <path d="M236,-8  L236,8"/>
+    <path d="M252,-24 L252,24"/>
+    <path d="M268,-36 L268,36"/>
+    <path d="M284,-16 L284,16"/>
+    <path d="M300,-2  L300,2"/>
+    <path d="M316,0 L336,0"/>
+  </g>
+  <g transform="translate(820,180)" stroke="url(#wave)" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.35" filter="url(#soft)">
+    <path d="M0,0 L20,0"/>
+    <path d="M44,-30 L44,30"/>
+    <path d="M60,-46 L60,46"/>
+    <path d="M124,-50 L124,50"/>
+    <path d="M188,-58 L188,58"/>
+    <path d="M268,-36 L268,36"/>
+  </g>
+</svg>

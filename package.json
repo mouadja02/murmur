@@ -11,6 +11,8 @@
     "build": "node scripts/clean.mjs && tsc && node scripts/copy-html.mjs",
     "check": "tsc --noEmit && biome check .",
     "format": "biome format --write .",
+    "test": "node --test",
+    "test:ci": "pnpm build && node --test",
     "setup:whisper": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-whisper.ps1"
   },
   "engines": {

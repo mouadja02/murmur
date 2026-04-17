@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea or improvement for Murmur.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would the ideal solution look like?
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered

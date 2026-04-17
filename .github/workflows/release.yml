@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v0.1.0)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish GitHub Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify package.json version matches tag
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.name }}".TrimStart('v')
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($pkg -ne $tag) {
+            Write-Error "package.json version ($pkg) does not match tag ($tag). Bump the version and re-tag."
+            exit 1
+          }
+
+      - name: Lint, typecheck, test, build
+        run: |
+          pnpm check
+          pnpm test:ci
+
+      - name: Assemble portable bundle
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.name }}"
+          $staging = "staging\murmur-$tag"
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item -Recurse dist      "$staging\dist"
+          Copy-Item -Recurse scripts   "$staging\scripts"
+          Copy-Item -Recurse skills    "$staging\skills" -ErrorAction SilentlyContinue
+          Copy-Item package.json       $staging
+          Copy-Item pnpm-lock.yaml     $staging
+          Copy-Item README.md          $staging
+          Copy-Item logo.svg           $staging
+          $zip = "murmur-$tag-win-x64.zip"
+          Compress-Archive -Path "$staging\*" -DestinationPath $zip -Force
+          "ASSET_PATH=$zip"   | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ASSET_NAME=$zip"   | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+          files: ${{ env.ASSET_PATH }}
+          fail_on_unmatched_files: true
