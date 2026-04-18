@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm" src="https://img.shields.io/npm/v/@mouadja/murmur?color=cb3837&logo=npm&label=npm"/></a>
-  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@mouadja/murmur?color=cb3837&logo=npm&label=downloads"/></a>
+  <a href="https://www.npmjs.com/package/@mouadja02/murmur"><img alt="npm" src="https://img.shields.io/npm/v/@mouadja/murmur?color=cb3837&logo=npm&label=npm"/></a>
+  <a href="https://www.npmjs.com/package/@mouadja02/murmur"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@mouadja/murmur?color=cb3837&logo=npm&label=downloads"/></a>
   <a href="https://github.com/mouadja02/murmur/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/mouadja02/murmur/actions/workflows/ci.yml/badge.svg"/></a>
   <a href="https://github.com/mouadja02/murmur/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/mouadja02/murmur?include_prereleases&sort=semver"/></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-success"/>
