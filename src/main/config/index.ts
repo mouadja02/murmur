@@ -75,6 +75,19 @@ function resolvePath(p: string, baseDir: string): string {
   return path.isAbsolute(p) ? p : path.resolve(baseDir, p);
 }
 
+/**
+ * Like `resolvePath`, but preserves bare command names (no path separators) so
+ * the OS can resolve them against `$PATH` at runtime. Silently rewriting a
+ * value like `whisper-cli` into `<configDir>/whisper-cli` makes preflight
+ * checks fail on machines where the binary is installed to `~/.local/bin`
+ * rather than the user data dir.
+ */
+function resolvePathOrBare(p: string, baseDir: string): string {
+  if (path.isAbsolute(p)) return p;
+  if (!p.includes('/') && !p.includes('\\')) return p;
+  return path.resolve(baseDir, p);
+}
+
 interface MergeSources {
   cli: PartialConfig;
   file: PartialConfig;
@@ -115,11 +128,15 @@ function resolveLayeredPath(
   key: 'whisperCliPath' | 'whisperModelPath' | 'logsDir' | 'skillsDir',
   fallback: string,
 ): string {
+  // whisper-cli is the only value that can meaningfully be a bare PATH
+  // command (e.g. after `apt-get install whisper.cpp` or a build that lands in
+  // `~/.local/bin`). Model / logs / skills are always file-system locations.
+  const resolver = key === 'whisperCliPath' ? resolvePathOrBare : resolvePath;
   const cwdBase = process.cwd();
-  if (sources.cli[key]) return resolvePath(sources.cli[key] as string, cwdBase);
-  if (sources.file[key]) return resolvePath(sources.file[key] as string, sources.fileDir);
-  if (sources.env[key]) return resolvePath(sources.env[key] as string, cwdBase);
-  return resolvePath(fallback, cwdBase);
+  if (sources.cli[key]) return resolver(sources.cli[key] as string, cwdBase);
+  if (sources.file[key]) return resolver(sources.file[key] as string, sources.fileDir);
+  if (sources.env[key]) return resolver(sources.env[key] as string, cwdBase);
+  return resolver(fallback, cwdBase);
 }
 
 export interface LoadedConfig {
