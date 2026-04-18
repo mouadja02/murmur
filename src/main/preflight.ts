@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import type { ResolvedConfig } from './config/index.js';
+import { whisperCliAvailable } from './platform.js';
 import type { LlmProvider } from './providers/index.js';
 
 export interface PreflightResult {
@@ -28,7 +29,7 @@ export async function runPreflight(
   const providerError = await provider.preflight();
   if (providerError) errors.push(providerError);
 
-  if (!existsSync(cfg.whisperCliPath)) {
+  if (!whisperCliAvailable(cfg.whisperCliPath)) {
     errors.push(
       `whisper.cpp binary not found at ${cfg.whisperCliPath}.\n` +
         `  Fix: ${setupHint()}\n` +

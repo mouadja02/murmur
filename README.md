@@ -47,10 +47,26 @@ You need **Node.js 20+**, a working microphone, and a local LLM server running s
 npx @mouadja/murmur
 ```
 
-That pulls the published package from npm, runs the pre-launch banner, and spins up the overlay. On the first run it will also prompt you to fetch `whisper.cpp`:
+That pulls the published package from npm, runs the pre-launch banner, and spins up the overlay.
+
+**On the first run, Murmur detects your OS and walks you through setup interactively.** If `whisper-cli` and/or the model file are missing, it asks:
+
+```
+── First-time setup ────────────────────────────────────────
+
+  o whisper-cli not found at /home/you/.config/murmur/whisper-cli
+    ? Install whisper.cpp now? (builds from source, ~2-5 min) (Y/n)
+
+  o whisper model not found at /home/you/.config/murmur/models/ggml-base.en.bin
+    ? Download ggml-base.en.bin (~148 MB)? (Y/n)
+```
+
+Say yes and Murmur does the rest — building `whisper.cpp` from source on Linux/macOS (or downloading a prebuilt binary on Windows), downloading the model, and writing the correct paths into your config file. No manual setup script, no editing JSON.
+
+If you prefer to run the setup step manually (e.g. on a CI agent):
 
 ```bash
-# Windows: downloads whisper-cli.exe + ggml-base.en.bin into ./bin/whisper/
+# Windows: downloads whisper-cli.exe + ggml-base.en.bin into <userData>/bin/whisper/
 npx @mouadja/murmur setup:whisper
 
 # macOS / Linux: downloads ggml-base.en.bin into ./models/

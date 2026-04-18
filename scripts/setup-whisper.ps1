@@ -1,11 +1,23 @@
 #Requires -Version 5.1
 # Downloads the latest whisper.cpp Windows x64 CPU build + ggml-base.en.bin.
 # Idempotent: skips anything already present.
+#
+# Usage:
+#   setup-whisper.ps1                         # install into <repo>/bin/whisper  (dev checkout)
+#   setup-whisper.ps1 -InstallDir <path>      # install into <path>/bin/whisper  (npx / runtime)
+
+param(
+  [string]$InstallDir
+)
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if ($InstallDir) {
+  $root = $InstallDir
+} else {
+  $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+}
 $binDir = Join-Path $root 'bin\whisper'
 $modelsDir = Join-Path $binDir 'models'
 

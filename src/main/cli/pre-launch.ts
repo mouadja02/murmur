@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getUserDataDir, HELP_TEXT, loadConfig, updateConfigFile } from '../config/index.js';
 import { loadSkills } from '../skills.js';
+import { runAutoSetup } from './auto-setup.js';
 import { printBanner } from './banner.js';
 import { askMultilineSystemPrompt, askPreLaunchAction } from './prompt.js';
 import { printStatus } from './status.js';
@@ -27,7 +28,8 @@ function controlPanelUrl(port: number): string {
 }
 
 async function main(): Promise<void> {
-  const loaded = loadConfig({ userDataDir: getUserDataDir() });
+  const userDataDir = getUserDataDir();
+  let loaded = loadConfig({ userDataDir });
 
   if (loaded.cli.helpAndExit) {
     console.log(HELP_TEXT);
@@ -40,17 +42,33 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const cfg = loaded.resolved;
+  let cfg = loaded.resolved;
   printBanner(getVersion());
 
   const skills = loadSkills(cfg.skillsDir);
   const panelUrl = controlPanelUrl(cfg.controlPanelPort);
   printStatus({ cfg, skills, controlPanelUrl: panelUrl });
 
-  // When stdin is not a TTY (CI, piped, VS Code debug), skip interactivity.
+  // When stdin is not a TTY (CI, piped, VS Code debug), skip interactivity
+  // entirely — including the first-time setup prompts.
   if (!process.stdin.isTTY) {
     console.log('\n  (non-interactive stdin — launching with current setup)\n');
     process.exit(0);
+  }
+
+  // First-time / missing-asset setup: prompts the user to install whisper-cli
+  // and the model if they're missing, writing any new paths back to the config
+  // file so the Electron process picks them up without a restart.
+  const setupResult = await runAutoSetup({ cfg, userDataDir });
+  if (
+    setupResult.changes.whisperCliPath !== undefined ||
+    setupResult.changes.whisperModelPath !== undefined
+  ) {
+    // Re-load so resolved paths reflect the new on-disk config.
+    loaded = loadConfig({ userDataDir });
+    cfg = loaded.resolved;
+    const updatedSkills = loadSkills(cfg.skillsDir);
+    printStatus({ cfg, skills: updatedSkills, controlPanelUrl: panelUrl });
   }
 
   let again = true;
