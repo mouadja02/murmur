@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm" src="https://img.shields.io/npm/v/@mouadja/murmur?color=cb3837&logo=npm&label=npm"/></a>
-  <a href="https://www.npmjs.com/package/@mouadja/murmur"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@mouadja/murmur?color=cb3837&logo=npm&label=downloads"/></a>
+  <a href="https://www.npmjs.com/package/@mouadja02/murmur"><img alt="npm" src="https://img.shields.io/npm/v/@mouadja02/murmur?color=cb3837&logo=npm&label=npm"/></a>
+  <a href="https://www.npmjs.com/package/@mouadja02/murmur"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@mouadja02/murmur?color=cb3837&logo=npm&label=downloads"/></a>
   <a href="https://github.com/mouadja02/murmur/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/mouadja02/murmur/actions/workflows/ci.yml/badge.svg"/></a>
   <a href="https://github.com/mouadja02/murmur/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/mouadja02/murmur?include_prereleases&sort=semver"/></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-success"/>
@@ -103,6 +103,8 @@ All three options drop you in the same place. The first run creates a config fil
 >
 > Most desktops ship these by default; install them if the overlay fails to boot with an `Error loading shared library` message.
 
+> **macOS accessibility permission.** Synthetic key events (the `Cmd+V` paste step) require Murmur to be granted **Accessibility** access. On first run, macOS will prompt you automatically. If you dismissed the prompt, go to **System Settings → Privacy & Security → Accessibility**, find `Electron` (or `Murmur`), and toggle it on. Without this permission the overlay runs but the refined text will not be pasted at your cursor.
+
 > If you don't have a local LLM yet, the fastest path is:
 > ```powershell
 > # Install Ollama from https://ollama.com, then:
@@ -125,7 +127,7 @@ Four stages, strictly local:
 | **Capture** | The overlay records 16 kHz mono PCM while you hold the hotkey (or between two clicks). |
 | **Transcribe** | `whisper.cpp` turns the WAV into text on your CPU. |
 | **Refine** | Your local LLM rewrites the transcription into a structured prompt using your active system prompt + enabled skills. |
-| **Inject** | Murmur copies the refined text, fires `Ctrl+V` at your current cursor, then restores whatever was on your clipboard before. |
+| **Inject** | Murmur copies the refined text, fires `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) at your current cursor, then restores whatever was on your clipboard before. |
 
 Every session gets a timestamped folder under `logs/` with the WAV, the raw transcription, the exact prompt sent to the LLM, and the refined output — so you can debug anything after the fact.
 
@@ -186,14 +188,19 @@ You can author them in your editor (they're git-friendly) or in the control pane
 
 ## LLM providers
 
-Pick one. The `openai-compat` provider covers practically every local server that speaks the OpenAI chat-completions dialect.
+Pick one. The `openai-compat` provider covers practically every local server that speaks the OpenAI chat-completions dialect — and also cloud endpoints like OpenAI and OpenRouter.
 
 | Provider | `--provider` | Default base URL | Known-good servers |
 | --- | --- | --- | --- |
 | **Ollama (native)** | `ollama` | `http://localhost:11434` | Ollama. Uses `/api/generate` with `think:false`. |
-| **OpenAI-compatible** | `openai-compat` | `http://localhost:1234/v1` | LM Studio, llama.cpp server, vLLM, Jan, KoboldCpp, oobabooga, Ollama's own `/v1` endpoint. |
+| **OpenAI-compatible** | `openai-compat` | `http://localhost:1234/v1` | LM Studio, llama.cpp server, vLLM, Jan, KoboldCpp, oobabooga, Ollama's own `/v1` endpoint — **and** OpenAI, OpenRouter, Groq (online). |
+| **Anthropic (Claude)** | `anthropic` | `https://api.anthropic.com/v1` | Claude 3 Haiku, Sonnet, Opus. Requires an API key. ☁ Online. |
 
 > `openai-compat` expects the **full** base URL including `/v1` — Murmur will not append it for you.
+
+> `anthropic` also expects `/v1` in the base URL (`https://api.anthropic.com/v1`).
+
+> ⚠️ **Online provider data warning.** When `baseUrl` points to a non-localhost address Murmur's control panel shows a prominent warning. Cloud providers (OpenAI, Anthropic, OpenRouter, Groq…) receive your voice transcription text and refined prompts over the internet. Review each provider's privacy and data-retention policy before use. **We recommend a local model** for any sensitive or proprietary work — see the [Model guide](#model-guide) below.
 
 ### Quick recipes
 
@@ -211,6 +218,18 @@ pnpm dev --provider openai-compat --base-url http://localhost:8080/v1 --model qw
 
 # Generic, with an API key
 pnpm dev --provider openai-compat --base-url http://localhost:5000/v1 --model my-model --api-key sk-xxx
+
+# OpenAI (online ☁)
+pnpm dev --provider openai-compat --base-url https://api.openai.com/v1 --model gpt-4o-mini --api-key sk-...
+
+# Anthropic Claude (online ☁)
+pnpm dev --provider anthropic --base-url https://api.anthropic.com/v1 --model claude-haiku-4-5 --api-key sk-ant-...
+
+# OpenRouter (online ☁ — free models available)
+pnpm dev --provider openai-compat --base-url https://openrouter.ai/api/v1 --model meta-llama/llama-3.1-8b-instruct:free --api-key sk-or-...
+
+# Groq (online ☁ — very fast inference)
+pnpm dev --provider openai-compat --base-url https://api.groq.com/openai/v1 --model llama-3.1-8b-instant --api-key gsk_...
 ```
 
 ---
@@ -375,6 +394,39 @@ From `architecture.md` §3.5 (mid-tier PC, small prompts):
 Typical short utterance ("refactor this function to use async await") on a mid-tier laptop: **~2–4 s end-to-end**, dominated by `refineMs`. Cold-start on the first request is markedly worse because the model hasn't been loaded into RAM/VRAM yet.
 
 </details>
+
+---
+
+## Model guide
+
+Choose a model that fits your hardware. All local tiers use **Ollama** — install from [ollama.com](https://ollama.com), then `ollama pull <model>` and set the model name in the control panel's **Provider** tab.
+
+| Tier | RAM | GPU VRAM | Recommended models | Pull command |
+| --- | --- | --- | --- | --- |
+| **Very low** | ≤ 4 GB | CPU only | qwen2.5:0.5b, qwen3:0.6b, tinyllama | `ollama pull qwen3:0.6b` |
+| **Low** | 8 GB | ≤ 4 GB / integrated | qwen3:1.7b, gemma3:2b, phi4-mini | `ollama pull qwen3:1.7b` |
+| **Mid ★** | 16 GB | 4–8 GB | **qwen3:4b** (default), llama3.2:3b, mistral:7b | `ollama pull qwen3:4b` |
+| **High** | 32 GB | 10–16 GB | qwen3:8b, llama3.1:8b, phi4:14b | `ollama pull qwen3:8b` |
+| **Very high** | 64 GB | 24+ GB | qwen3:14b, qwen3:30b-a3b, llama3.3:70b | `ollama pull qwen3:14b` |
+| **Online ☁** | any | any | gpt-4o-mini, claude-haiku-4-5, openrouter/* | API key required |
+
+> **Not sure what tier you are?**
+> - **RAM**: Windows → Task Manager → Performance → Memory. macOS → About This Mac. Linux → `free -h`
+> - **GPU VRAM**: Windows → Task Manager → GPU. macOS → About This Mac → Graphics. Linux → `nvidia-smi`
+> - **Rule of thumb**: the model file must fit in VRAM (GPU inference) or RAM (CPU inference). Leave ~2 GB headroom for the OS.
+
+The interactive **Model guide** tab in the control panel (`http://localhost:7331#model-guide`) shows the same table with one-click `ollama pull` copy commands.
+
+### Privacy note for online providers
+
+When `baseUrl` is not a localhost address, Murmur shows a warning banner in the control panel. Cloud providers process your data under their own terms:
+
+- [OpenAI privacy policy](https://openai.com/policies/privacy-policy)
+- [Anthropic privacy policy](https://www.anthropic.com/privacy)
+- [OpenRouter privacy policy](https://openrouter.ai/privacy)
+- [Groq privacy policy](https://groq.com/privacy-policy/)
+
+For production or privacy-sensitive use, **run a local model**.
 
 ---
 

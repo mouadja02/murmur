@@ -52,6 +52,7 @@ export class OpenAiCompatProvider implements LlmProvider {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
     });
 
     if (!res.ok) {

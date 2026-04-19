@@ -46,14 +46,15 @@ const STATES = [
 
 type StateName = (typeof STATES)[number];
 
-const overlay = required<HTMLDivElement>('overlay');
-const _trigger = required<HTMLButtonElement>('trigger');
-const logoWrap = required<HTMLSpanElement>('logo-wrap');
-const barsEl = required<HTMLDivElement>('bars');
-const statusChip = required<HTMLDivElement>('status-chip');
-const infoTooltip = required<HTMLDivElement>('info-tooltip');
-
-logoWrap.innerHTML = LOGO_SVG;
+const STATE_LABELS: Record<StateName, string> = {
+  idle: 'idle',
+  recording: 'Recording\u2026',
+  transcribing: 'Transcribing\u2026',
+  refining: 'Refining\u2026',
+  injecting: 'Pasting\u2026',
+  done: 'Done',
+  error: 'Error',
+};
 
 function required<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -61,12 +62,20 @@ function required<T extends HTMLElement>(id: string): T {
   return el as T;
 }
 
+const overlay = required<HTMLDivElement>('overlay');
+const logoWrap = required<HTMLSpanElement>('logo-wrap');
+const barsEl = required<HTMLDivElement>('bars');
+const statusChip = required<HTMLDivElement>('status-chip');
+const infoTooltip = required<HTMLDivElement>('info-tooltip');
+
+logoWrap.innerHTML = LOGO_SVG;
+
 const soundbar = createSoundbar(barsEl);
 
 function setState(state: StateName): void {
   for (const s of STATES) overlay.classList.remove(`state-${s}`);
   overlay.classList.add(`state-${state}`);
-  statusChip.textContent = state;
+  statusChip.textContent = STATE_LABELS[state];
 
   if (state === 'recording') {
     overlay.classList.add('expanded');
@@ -108,11 +117,11 @@ window.murmur.onStopRecording(async () => {
 
 window.murmur.onInfo((info) => {
   infoTooltip.textContent =
-    `${info.providerDisplayName} · ${info.model}\n` +
+    `${info.providerDisplayName} \u00b7 ${info.model}\n` +
     `${info.baseUrl}\n` +
-    `PTT ${info.hotkeyCombo}  ·  Toggle ${info.toggleHotkeyCombo}\n` +
+    `PTT ${info.hotkeyCombo}  \u00b7  Toggle ${info.toggleHotkeyCombo}\n` +
     `Panel ${info.controlPanelUrl}\n` +
-    'Drag to move · Right-click for menu';
+    'Drag to move \u00b7 Right-click for menu';
   infoTooltip.style.whiteSpace = 'pre';
 });
 

@@ -33,7 +33,7 @@ function readEnv(): PartialConfig {
   const e = process.env;
   const partial: PartialConfig = {};
 
-  if (e.LLM_PROVIDER === 'ollama' || e.LLM_PROVIDER === 'openai-compat') {
+  if (e.LLM_PROVIDER === 'ollama' || e.LLM_PROVIDER === 'openai-compat' || e.LLM_PROVIDER === 'anthropic') {
     partial.provider = e.LLM_PROVIDER;
   }
   if (e.LLM_BASE_URL) partial.baseUrl = e.LLM_BASE_URL;

@@ -91,7 +91,7 @@ export interface PartialConfig {
   skillsDir?: string;
 }
 
-const VALID_PROVIDERS: ProviderId[] = ['ollama', 'openai-compat'];
+const VALID_PROVIDERS: ProviderId[] = ['ollama', 'openai-compat', 'anthropic'];
 const VALID_ANCHORS: OverlayAnchor[] = ['bottom-center', 'bottom-right', 'top-right', 'free'];
 
 function isString(v: unknown): v is string {

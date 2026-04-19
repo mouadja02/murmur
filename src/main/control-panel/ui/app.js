@@ -61,6 +61,8 @@ function applyStateToDom() {
   updatePromptCharCount();
   $('#composed-prompt').textContent = state.composedSystemPrompt;
 
+  updateOnlineWarning(c.baseUrl);
+
   renderSkillList();
   if (state.selectedSkillId) {
     const found = state.skills.find((s) => s.id === state.selectedSkillId);
@@ -280,7 +282,9 @@ function wireSkills() {
       if (isNew) {
         const snap = await api('POST', '/api/skills', payload);
         applySnapshot(snap);
-        state.selectedSkillId = payload.id || slugify(payload.name);
+        // Use the id the server assigned (may differ from the client-guessed slug).
+        const created = snap.skills.find((s) => s.name === payload.name);
+        state.selectedSkillId = created?.id ?? slugify(payload.name);
       } else {
         const id = state.selectedSkillId;
         const snap = await api('PUT', `/api/skills/${encodeURIComponent(id)}`, payload);
@@ -421,9 +425,32 @@ function wireProvider() {
       } else if (which === 'llamacpp') {
         $('#cfg-provider').value = 'openai-compat';
         $('#cfg-baseUrl').value = 'http://localhost:8080/v1';
+      } else if (which === 'openai') {
+        $('#cfg-provider').value = 'openai-compat';
+        $('#cfg-baseUrl').value = 'https://api.openai.com/v1';
+        $('#cfg-model').value = 'gpt-4o-mini';
+      } else if (which === 'anthropic-haiku') {
+        $('#cfg-provider').value = 'anthropic';
+        $('#cfg-baseUrl').value = 'https://api.anthropic.com/v1';
+        $('#cfg-model').value = 'claude-haiku-4-5';
+      } else if (which === 'openrouter') {
+        $('#cfg-provider').value = 'openai-compat';
+        $('#cfg-baseUrl').value = 'https://openrouter.ai/api/v1';
+        $('#cfg-model').value = 'meta-llama/llama-3.1-8b-instruct:free';
+      } else if (which === 'groq') {
+        $('#cfg-provider').value = 'openai-compat';
+        $('#cfg-baseUrl').value = 'https://api.groq.com/openai/v1';
+        $('#cfg-model').value = 'llama-3.1-8b-instant';
       }
+      // Re-evaluate the online warning whenever a preset is clicked.
+      updateOnlineWarning($('#cfg-baseUrl').value);
     });
   }
+  // Also update the warning in real-time as the user types the URL.
+  $('#cfg-baseUrl').addEventListener('input', () => {
+    updateOnlineWarning($('#cfg-baseUrl').value);
+  });
+  $('#goto-model-guide')?.addEventListener('click', () => setTab('model-guide'));
 }
 
 function wireGenericForm(selector, extract) {
@@ -489,6 +516,40 @@ Rules:
 - Keep the user's voice. Do not make it corporate or verbose.
 - Output ONLY the refined prompt. No preamble like "Here is the refined prompt:". No meta-commentary. No markdown code fences unless the refined prompt itself needs them.`;
 
+/**
+ * Returns true when `url` resolves to a local/private address.
+ * Any URL that is NOT local is considered "online" and triggers the
+ * data-retention warning in the provider pane.
+ */
+function isLocalUrl(url) {
+  try {
+    const u = new URL(url);
+    const h = u.hostname;
+    return (
+      h === 'localhost' ||
+      h === '127.0.0.1' ||
+      h === '::1' ||
+      h === '[::1]' ||
+      h === '0.0.0.0' ||
+      /^10\./.test(h) ||
+      /^192\.168\./.test(h) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+    );
+  } catch {
+    return true; // treat unparseable as local — don't warn on garbage input
+  }
+}
+
+function updateOnlineWarning(baseUrl) {
+  const el = $('#online-warning');
+  if (!el) return;
+  if (baseUrl && !isLocalUrl(baseUrl)) {
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
 wireTabs();
 wireSystemPrompt();
 wireSkills();
@@ -498,6 +559,10 @@ wireHotkeys();
 wirePaths();
 wireSaveAll();
 wireOverlayControls();
+
+// Cross-tab navigation links inside panes
+document.getElementById('goto-provider')?.addEventListener('click', () => setTab('provider'));
+
 refresh();
 setInterval(() => {
   refresh().catch(() => {});
