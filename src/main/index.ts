@@ -286,6 +286,7 @@ function reloadConfigAfterExternalUpdate(): void {
   if (!loaded) return;
   const fresh = loadConfig({ userDataDir: app.getPath('userData') });
   loaded.resolved = fresh.resolved;
+  loaded.overrides = fresh.overrides;
   provider = createProvider(getProviderConfig(loaded.resolved));
   if (pipeline) {
     pipeline = new Pipeline({
@@ -309,6 +310,10 @@ async function startPanel(): Promise<void> {
       getCurrentConfig: () => {
         if (!loaded) throw new Error('config not loaded yet');
         return loaded.resolved;
+      },
+      getCurrentOverrides: () => {
+        if (!loaded) throw new Error('config not loaded yet');
+        return loaded.overrides;
       },
       onConfigUpdated: () => {
         reloadConfigAfterExternalUpdate();

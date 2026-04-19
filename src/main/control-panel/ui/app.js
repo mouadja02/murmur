@@ -7,11 +7,53 @@ const dirtyForms = new Set();
 
 const state = {
   config: null,
+  overrides: {},
   skills: [],
   composedSystemPrompt: '',
   providers: [],
   selectedSkillId: null,
   dirtySkill: false,
+};
+
+/**
+ * Maps a ResolvedConfig key to:
+ *   - inputId : the form control to mark read-only when an override is active
+ *   - flag    : the CLI flag the user would have to drop to regain control
+ *   - env     : the env var alternative
+ *   - section : dirty-form section that should also be considered "locked"
+ */
+const FIELD_INFO = {
+  provider: { inputId: 'cfg-provider', flag: '--provider', env: 'LLM_PROVIDER' },
+  baseUrl: { inputId: 'cfg-baseUrl', flag: '--base-url', env: 'LLM_BASE_URL' },
+  model: { inputId: 'cfg-model', flag: '--model', env: 'LLM_MODEL' },
+  apiKey: { inputId: 'cfg-apiKey', flag: '--api-key', env: 'LLM_API_KEY' },
+  temperature: { inputId: 'cfg-temperature', flag: '--temperature', env: 'LLM_TEMPERATURE' },
+  whisperCliPath: { inputId: 'cfg-whisperCliPath', flag: '--whisper-cli', env: 'WHISPER_CLI_PATH' },
+  whisperModelPath: {
+    inputId: 'cfg-whisperModelPath',
+    flag: '--whisper-model',
+    env: 'WHISPER_MODEL_PATH',
+  },
+  sampleRate: { inputId: 'cfg-sampleRate', flag: '--sample-rate', env: 'WHISPER_SAMPLE_RATE' },
+  hotkeyCombo: { inputId: 'cfg-hotkeyCombo', flag: '--hotkey', env: 'MURMUR_HOTKEY' },
+  toggleHotkeyCombo: {
+    inputId: 'cfg-toggleHotkeyCombo',
+    flag: '--toggle-hotkey',
+    env: 'MURMUR_TOGGLE_HOTKEY',
+  },
+  clipboardRestoreDelayMs: {
+    inputId: 'cfg-clipboardRestoreDelayMs',
+    flag: '--clipboard-restore-delay',
+    env: 'MURMUR_CLIPBOARD_RESTORE_DELAY_MS',
+  },
+  systemPrompt: { inputId: 'system-prompt', flag: '--system-prompt', env: 'MURMUR_SYSTEM_PROMPT' },
+  controlPanelPort: {
+    inputId: 'cfg-controlPanelPort',
+    flag: '--control-panel-port',
+    env: 'MURMUR_CONTROL_PANEL_PORT',
+  },
+  logsDir: { inputId: 'cfg-logsDir', flag: '--logs-dir', env: 'MURMUR_LOGS_DIR' },
+  skillsDir: { inputId: 'cfg-skillsDir', flag: '--skills-dir', env: 'MURMUR_SKILLS_DIR' },
 };
 
 async function api(method, path, body) {
@@ -92,6 +134,58 @@ function applyStateToDom() {
       else showSkillForm(null);
     }
   }
+}
+
+/**
+ * For every field in `state.overrides`, lock the matching input and attach a
+ * small chip explaining which CLI flag / env var is shadowing it.  Saves to
+ * locked fields would silently no-op on the next config reload, so making
+ * them read-only is the only honest UX.
+ */
+function applyOverridesToDom() {
+  const overrides = state.overrides ?? {};
+  for (const [key, info] of Object.entries(FIELD_INFO)) {
+    const input = document.getElementById(info.inputId);
+    if (!input) continue;
+    const source = overrides[key];
+    setFieldLocked(input, info, source);
+  }
+}
+
+function setFieldLocked(input, info, source) {
+  const wrapper = input.closest('.field') ?? input.parentElement;
+  const existing = wrapper?.querySelector('.override-chip');
+
+  if (!source) {
+    input.readOnly = false;
+    input.disabled = false;
+    input.classList.remove('locked');
+    existing?.remove();
+    return;
+  }
+
+  // SELECTs don't honour readOnly, so we disable them instead.
+  if (input.tagName === 'SELECT') input.disabled = true;
+  else input.readOnly = true;
+  input.classList.add('locked');
+
+  const label =
+    source === 'cli' ? `Locked by ${info.flag} CLI flag` : `Locked by ${info.env} env var`;
+  const tip = `Restart Murmur without ${
+    source === 'cli' ? `the ${info.flag} flag` : `the ${info.env} environment variable`
+  } to edit this here.`;
+
+  if (existing) {
+    existing.textContent = label;
+    existing.title = tip;
+    return;
+  }
+  if (!wrapper) return;
+  const chip = document.createElement('span');
+  chip.className = 'override-chip';
+  chip.textContent = label;
+  chip.title = tip;
+  wrapper.appendChild(chip);
 }
 
 function updatePromptCharCount() {
@@ -184,11 +278,13 @@ async function refresh() {
   try {
     const snap = await api('GET', '/api/state');
     state.config = snap.config;
+    state.overrides = snap.overrides ?? {};
     state.skills = snap.skills;
     state.composedSystemPrompt = snap.composedSystemPrompt;
     state.providers = snap.providers;
     state.overlay = snap.overlay ?? { visible: null };
     applyStateToDom();
+    applyOverridesToDom();
     applyOverlayStateToDom();
     setSaveStatus('');
   } catch (err) {
@@ -364,10 +460,12 @@ function wireSkills() {
 
 function applySnapshot(snap) {
   state.config = snap.config;
+  state.overrides = snap.overrides ?? state.overrides ?? {};
   state.skills = snap.skills;
   state.composedSystemPrompt = snap.composedSystemPrompt;
   state.providers = snap.providers ?? state.providers;
   applyStateToDom();
+  applyOverridesToDom();
 }
 
 function slugify(s) {
@@ -511,27 +609,39 @@ function wireGenericForm(selector, extract, dirtyKey) {
 }
 
 function wireWhisper() {
-  wireGenericForm('#whisper-form', () => ({
-    whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
-    whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
-    sampleRate: Number($('#cfg-sampleRate').value),
-  }), 'whisper');
+  wireGenericForm(
+    '#whisper-form',
+    () => ({
+      whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
+      whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
+      sampleRate: Number($('#cfg-sampleRate').value),
+    }),
+    'whisper',
+  );
 }
 
 function wireHotkeys() {
-  wireGenericForm('#hotkeys-form', () => ({
-    hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
-    toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
-    clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
-  }), 'hotkeys');
+  wireGenericForm(
+    '#hotkeys-form',
+    () => ({
+      hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
+      toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
+      clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
+    }),
+    'hotkeys',
+  );
 }
 
 function wirePaths() {
-  wireGenericForm('#paths-form', () => ({
-    logsDir: $('#cfg-logsDir').value.trim(),
-    skillsDir: $('#cfg-skillsDir').value.trim(),
-    controlPanelPort: Number($('#cfg-controlPanelPort').value),
-  }), 'paths');
+  wireGenericForm(
+    '#paths-form',
+    () => ({
+      logsDir: $('#cfg-logsDir').value.trim(),
+      skillsDir: $('#cfg-skillsDir').value.trim(),
+      controlPanelPort: Number($('#cfg-controlPanelPort').value),
+    }),
+    'paths',
+  );
 }
 
 function wireSaveAll() {
@@ -608,8 +718,7 @@ function parseSkillMarkdown(text) {
   }
   const yaml = match[1];
   const content = match[2].trim();
-  const get = (key) =>
-    (yaml.match(new RegExp(`^${key}:\\s*(.+)$`, 'm')) || [])[1]?.trim() ?? '';
+  const get = (key) => (yaml.match(new RegExp(`^${key}:\\s*(.+)$`, 'm')) || [])[1]?.trim() ?? '';
   return { id: get('id'), name: get('name'), description: get('description'), content };
 }
 
@@ -679,7 +788,10 @@ function wireImportSkill() {
 
   async function fetchSkillUrl() {
     const url = urlInput.value.trim();
-    if (!url) { toast('Enter a URL first', 'error'); return; }
+    if (!url) {
+      toast('Enter a URL first', 'error');
+      return;
+    }
     fetchBtn.textContent = 'Fetching\u2026';
     fetchBtn.disabled = true;
     try {
@@ -696,7 +808,9 @@ function wireImportSkill() {
   }
 
   fetchBtn.addEventListener('click', fetchSkillUrl);
-  urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchSkillUrl(); });
+  urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') fetchSkillUrl();
+  });
 }
 
 wireTabs();

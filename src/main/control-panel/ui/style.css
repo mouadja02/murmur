@@ -309,6 +309,41 @@ input[readonly] {
   color: var(--text-dim);
 }
 
+/* ── CLI / env override badges ──────────────────────────── */
+
+input.locked,
+select.locked,
+textarea.locked {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--bg-elev-2) 80%, var(--bad) 6%);
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
+input.locked:focus,
+select.locked:focus,
+textarea.locked:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.override-chip {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--bad) 18%, transparent);
+  color: color-mix(in srgb, var(--bad) 70%, var(--text) 30%);
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent);
+  cursor: help;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 textarea {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -435,7 +470,10 @@ code {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
 }
 
 .import-tab.active {
@@ -461,7 +499,9 @@ code {
   font-size: 12px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
   user-select: none;
   -webkit-user-select: none;
   line-height: 1.5;
@@ -851,12 +891,24 @@ code {
   color: #fff;
 }
 
-.tier-very-low  { background: #374151; }
-.tier-low       { background: #1d4ed8; }
-.tier-mid       { background: linear-gradient(90deg, #6d28d9, #4f46e5); }
-.tier-high      { background: #0e7490; }
-.tier-very-high { background: #065f46; }
-.tier-online    { background: #92400e; }
+.tier-very-low {
+  background: #374151;
+}
+.tier-low {
+  background: #1d4ed8;
+}
+.tier-mid {
+  background: linear-gradient(90deg, #6d28d9, #4f46e5);
+}
+.tier-high {
+  background: #0e7490;
+}
+.tier-very-high {
+  background: #065f46;
+}
+.tier-online {
+  background: #92400e;
+}
 
 .tier-spec {
   padding: 4px 16px 10px;

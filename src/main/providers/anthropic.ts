@@ -75,9 +75,7 @@ export class AnthropicProvider implements LlmProvider {
 
   async preflight(): Promise<string | null> {
     if (!this.config.apiKey) {
-      return (
-        'Anthropic requires an API key. Get one at https://console.anthropic.com/settings/api-keys'
-      );
+      return 'Anthropic requires an API key. Get one at https://console.anthropic.com/settings/api-keys';
     }
 
     let models: AnthropicModelsResponse;

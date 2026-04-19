@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type PartialConfig, type ResolvedConfig, updateConfigFile } from '../config/index.js';
+import {
+  type ConfigOverrides,
+  type PartialConfig,
+  type ResolvedConfig,
+  updateConfigFile,
+} from '../config/index.js';
 import { sanitizePartial } from '../config/schema.js';
 import { PROVIDER_PRESETS } from '../providers/index.js';
 import { composeSystemPrompt, deleteSkill, loadSkills, type Skill, saveSkill } from '../skills.js';
@@ -22,6 +27,13 @@ const MIME: Record<string, string> = {
 
 export interface ServerDeps {
   getCurrentConfig: () => ResolvedConfig;
+  /**
+   * Returns the per-field override map (CLI / env vars currently shadowing the
+   * on-disk config).  The control panel uses this to disable inputs whose
+   * resolved value comes from a higher-precedence source than the JSON file —
+   * editing them would silently no-op on the next config reload.
+   */
+  getCurrentOverrides?: () => ConfigOverrides;
   /** Called when the config has been mutated (file already written). Expected to re-resolve. */
   onConfigUpdated: () => void;
   /** Probe the LLM provider with the current config. */
@@ -141,6 +153,7 @@ function stateSnapshot(deps: ServerDeps): Record<string, unknown> {
   const composed = composeSystemPrompt(cfg.systemPrompt, skills, cfg.enabledSkills);
   return {
     config: publicConfig(cfg),
+    overrides: deps.getCurrentOverrides?.() ?? {},
     skills: skills.map(skillJson),
     composedSystemPrompt: composed,
     providers: Object.entries(PROVIDER_PRESETS).map(([id, preset]) => ({
