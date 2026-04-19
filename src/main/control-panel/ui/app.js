@@ -1,6 +1,10 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+// Tracks which form sections have unsaved user edits so auto-refresh never
+// overwrites in-progress work.  Cleared on a successful save of that section.
+const dirtyForms = new Set();
+
 const state = {
   config: null,
   skills: [],
@@ -38,30 +42,45 @@ function applyStateToDom() {
   const c = state.config;
   if (!c) return;
 
-  $('#cfg-provider').value = c.provider;
-  $('#cfg-baseUrl').value = c.baseUrl;
-  $('#cfg-model').value = c.model;
-  $('#cfg-apiKey').placeholder = c.apiKeySet
-    ? '•••••••• (stored, leave blank to keep)'
-    : '(not set)';
-  $('#cfg-apiKey').value = '';
-  $('#cfg-temperature').value = c.temperature;
-  $('#cfg-whisperCliPath').value = c.whisperCliPath;
-  $('#cfg-whisperModelPath').value = c.whisperModelPath;
-  $('#cfg-sampleRate').value = c.sampleRate;
-  $('#cfg-hotkeyCombo').value = c.hotkeyCombo;
-  $('#cfg-toggleHotkeyCombo').value = c.toggleHotkeyCombo;
-  $('#cfg-clipboardRestoreDelayMs').value = c.clipboardRestoreDelayMs;
-  $('#cfg-logsDir').value = c.logsDir;
-  $('#cfg-skillsDir').value = c.skillsDir;
-  $('#cfg-controlPanelPort').value = c.controlPanelPort;
-  $('#cfg-configFilePath').value = c.configFilePath;
+  // Each form section is only written when it has no unsaved user edits.
+  // dirtyForms entries are set by input listeners and cleared on save.
 
-  $('#system-prompt').value = c.systemPrompt;
-  updatePromptCharCount();
+  if (!dirtyForms.has('provider')) {
+    $('#cfg-provider').value = c.provider;
+    $('#cfg-baseUrl').value = c.baseUrl;
+    $('#cfg-model').value = c.model;
+    $('#cfg-apiKey').placeholder = c.apiKeySet
+      ? '•••••••• (stored, leave blank to keep)'
+      : '(not set)';
+    $('#cfg-apiKey').value = '';
+    $('#cfg-temperature').value = c.temperature;
+    updateOnlineWarning(c.baseUrl);
+  }
+
+  if (!dirtyForms.has('system-prompt')) {
+    $('#system-prompt').value = c.systemPrompt;
+    updatePromptCharCount();
+  }
   $('#composed-prompt').textContent = state.composedSystemPrompt;
 
-  updateOnlineWarning(c.baseUrl);
+  if (!dirtyForms.has('whisper')) {
+    $('#cfg-whisperCliPath').value = c.whisperCliPath;
+    $('#cfg-whisperModelPath').value = c.whisperModelPath;
+    $('#cfg-sampleRate').value = c.sampleRate;
+  }
+
+  if (!dirtyForms.has('hotkeys')) {
+    $('#cfg-hotkeyCombo').value = c.hotkeyCombo;
+    $('#cfg-toggleHotkeyCombo').value = c.toggleHotkeyCombo;
+    $('#cfg-clipboardRestoreDelayMs').value = c.clipboardRestoreDelayMs;
+  }
+
+  if (!dirtyForms.has('paths')) {
+    $('#cfg-logsDir').value = c.logsDir;
+    $('#cfg-skillsDir').value = c.skillsDir;
+    $('#cfg-controlPanelPort').value = c.controlPanelPort;
+    $('#cfg-configFilePath').value = c.configFilePath;
+  }
 
   renderSkillList();
   if (state.selectedSkillId) {
@@ -242,11 +261,15 @@ function wireTabs() {
 }
 
 function wireSystemPrompt() {
-  $('#system-prompt').addEventListener('input', updatePromptCharCount);
+  $('#system-prompt').addEventListener('input', () => {
+    dirtyForms.add('system-prompt');
+    updatePromptCharCount();
+  });
   $('#btn-save-prompt').addEventListener('click', async () => {
     try {
       setSaveStatus('Saving…');
       await api('PUT', '/api/system-prompt', { prompt: $('#system-prompt').value });
+      dirtyForms.delete('system-prompt');
       setSaveStatus('Saved', 'ok');
       toast('System prompt saved', 'success');
       await refresh();
@@ -259,6 +282,7 @@ function wireSystemPrompt() {
     if (!confirm('Reset system prompt to the built-in default?')) return;
     try {
       await api('PUT', '/api/system-prompt', { prompt: DEFAULT_PROMPT });
+      dirtyForms.delete('system-prompt');
       toast('Reset to default', 'success');
       await refresh();
     } catch (err) {
@@ -377,6 +401,14 @@ function readConfigForm(extra = {}) {
 }
 
 function wireProvider() {
+  // Mark provider form dirty whenever any field is touched.
+  for (const id of ['cfg-provider', 'cfg-baseUrl', 'cfg-model', 'cfg-apiKey', 'cfg-temperature']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', () => dirtyForms.add('provider'));
+    el.addEventListener('change', () => dirtyForms.add('provider'));
+  }
+
   $('#provider-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const apiKey = $('#cfg-apiKey').value;
@@ -390,7 +422,10 @@ function wireProvider() {
     else if (apiKey === '' && $('#cfg-apiKey').dataset.clear === '1') patch.apiKey = null;
     try {
       const snap = await api('PUT', '/api/config', patch);
+      dirtyForms.delete('provider');
       applySnapshot(snap);
+      // Evaluate the online warning only after the user deliberately saves.
+      updateOnlineWarning(patch.baseUrl);
       toast('Provider saved', 'success');
     } catch (err) {
       toast(err.message, 'error');
@@ -446,22 +481,27 @@ function wireProvider() {
         $('#cfg-baseUrl').value = 'https://api.groq.com/openai/v1';
         $('#cfg-model').value = 'llama-3.1-8b-instant';
       }
-      // Re-evaluate the online warning whenever a preset is clicked.
+      dirtyForms.add('provider');
+      // Preset buttons make an intentional choice — show warning immediately.
       updateOnlineWarning($('#cfg-baseUrl').value);
     });
   }
-  // Also update the warning in real-time as the user types the URL.
-  $('#cfg-baseUrl').addEventListener('input', () => {
-    updateOnlineWarning($('#cfg-baseUrl').value);
-  });
   $('#goto-model-guide')?.addEventListener('click', () => setTab('model-guide'));
 }
 
-function wireGenericForm(selector, extract) {
-  $(selector).addEventListener('submit', async (e) => {
+function wireGenericForm(selector, extract, dirtyKey) {
+  const form = $(selector);
+  if (dirtyKey) {
+    for (const el of form.querySelectorAll('input, textarea, select')) {
+      el.addEventListener('input', () => dirtyForms.add(dirtyKey));
+      el.addEventListener('change', () => dirtyForms.add(dirtyKey));
+    }
+  }
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       const snap = await api('PUT', '/api/config', extract());
+      if (dirtyKey) dirtyForms.delete(dirtyKey);
       applySnapshot(snap);
       toast('Saved', 'success');
     } catch (err) {
@@ -475,7 +515,7 @@ function wireWhisper() {
     whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
     whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
     sampleRate: Number($('#cfg-sampleRate').value),
-  }));
+  }), 'whisper');
 }
 
 function wireHotkeys() {
@@ -483,7 +523,7 @@ function wireHotkeys() {
     hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
     toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
     clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
-  }));
+  }), 'hotkeys');
 }
 
 function wirePaths() {
@@ -491,7 +531,7 @@ function wirePaths() {
     logsDir: $('#cfg-logsDir').value.trim(),
     skillsDir: $('#cfg-skillsDir').value.trim(),
     controlPanelPort: Number($('#cfg-controlPanelPort').value),
-  }));
+  }), 'paths');
 }
 
 function wireSaveAll() {
@@ -500,6 +540,7 @@ function wireSaveAll() {
       setSaveStatus('Saving…');
       await api('PUT', '/api/system-prompt', { prompt: $('#system-prompt').value });
       await api('PUT', '/api/config', readConfigForm());
+      dirtyForms.clear();
       setSaveStatus('Saved', 'ok');
       toast('Everything saved', 'success');
       await refresh();
