@@ -145,13 +145,14 @@
         <div id="online-warning" class="online-warning hidden" role="alert">
           <div class="online-warning-icon">⚠</div>
           <div class="online-warning-body">
-            <strong>You are using an online endpoint.</strong>
-            Your voice transcriptions and refined prompts will be sent to an external server.
-            Cloud providers may log or use this data per their own retention policies.
+            <strong>External domain detected.</strong>
+            If this endpoint belongs to a third-party service, your voice transcriptions
+            and refined prompts will be sent to and processed on their servers.
+            Third-party providers may store or use this data under their own retention policies.
             <span class="online-warning-links">
-              We recommend a local model for privacy-sensitive work —
+              For privacy-sensitive work we recommend a local model —
               see the <button type="button" class="link-btn" id="goto-model-guide">Model guide</button>
-              for hardware-matched options.
+              for hardware-matched options that keep everything on your machine.
             </span>
           </div>
         </div>

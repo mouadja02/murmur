@@ -471,20 +471,32 @@ code {
   border-radius: var(--radius);
   background: var(--bg-elev-2);
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
 .skill-editor .empty {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 200px;
   align-items: center;
   justify-content: center;
   color: var(--text-faint);
   gap: 6px;
 }
 
+#skill-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 #skill-form textarea {
   min-height: 240px;
+  flex: 1;
 }
 
 .skill-toolbar {
@@ -592,7 +604,7 @@ code {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .toast {

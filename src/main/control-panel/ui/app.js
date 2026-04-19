@@ -517,33 +517,33 @@ Rules:
 - Output ONLY the refined prompt. No preamble like "Here is the refined prompt:". No meta-commentary. No markdown code fences unless the refined prompt itself needs them.`;
 
 /**
- * Returns true when `url` resolves to a local/private address.
- * Any URL that is NOT local is considered "online" and triggers the
- * data-retention warning in the provider pane.
+ * Returns true when `url`'s hostname looks like a domain name (contains
+ * at least one letter and at least one dot), as opposed to localhost, a bare
+ * IPv4 address, or an IPv6 address.
+ *
+ * We only warn for domain-based URLs because an IP address could be the
+ * user's own private or dedicated server — we can't know either way.
  */
-function isLocalUrl(url) {
+function isDomainUrl(url) {
   try {
-    const u = new URL(url);
-    const h = u.hostname;
-    return (
-      h === 'localhost' ||
-      h === '127.0.0.1' ||
-      h === '::1' ||
-      h === '[::1]' ||
-      h === '0.0.0.0' ||
-      /^10\./.test(h) ||
-      /^192\.168\./.test(h) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(h)
-    );
+    const h = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (!h) return false;
+    if (h === 'localhost') return false;
+    // IPv4: four groups of digits separated by dots
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false;
+    // IPv6: contains colons
+    if (h.includes(':')) return false;
+    // Anything with letters and a dot is a domain name
+    return /[a-z]/.test(h) && h.includes('.');
   } catch {
-    return true; // treat unparseable as local — don't warn on garbage input
+    return false;
   }
 }
 
 function updateOnlineWarning(baseUrl) {
   const el = $('#online-warning');
   if (!el) return;
-  if (baseUrl && !isLocalUrl(baseUrl)) {
+  if (baseUrl && isDomainUrl(baseUrl)) {
     el.classList.remove('hidden');
   } else {
     el.classList.add('hidden');
