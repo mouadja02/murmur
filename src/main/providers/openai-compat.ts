@@ -66,6 +66,15 @@ export class OpenAiCompatProvider implements LlmProvider {
   }
 
   async preflight(): Promise<string | null> {
+    // Early check: warn if the user likely forgot the /v1 suffix.
+    // LM Studio / llama.cpp / vLLM all require it.
+    if (!/\/v\d+\/?$/.test(this.config.baseUrl.replace(/\/$/, ''))) {
+      return (
+        `Base URL '${this.config.baseUrl}' does not end with a version segment like /v1. ` +
+        `Most OpenAI-compatible servers require it — e.g. http://localhost:1234/v1`
+      );
+    }
+
     let models: OpenAiModelsResponse;
     try {
       const res = await fetch(`${this.config.baseUrl}/models`, {
@@ -80,12 +89,29 @@ export class OpenAiCompatProvider implements LlmProvider {
           `is the base URL correct? (LM Studio default: http://localhost:1234/v1)`
         );
       }
-      models = (await res.json()) as OpenAiModelsResponse;
+      const raw = (await res.json()) as unknown;
+      // Defensively normalise the response — some servers return the models list
+      // directly as an array, others wrap it in { data: [...] }, and some (e.g.
+      // LM Studio when the path is wrong) return an object with no data at all.
+      if (Array.isArray(raw)) {
+        models = { data: raw as { id: string }[] };
+      } else if (
+        raw !== null &&
+        typeof raw === 'object' &&
+        Array.isArray((raw as Record<string, unknown>).data)
+      ) {
+        models = raw as OpenAiModelsResponse;
+      } else {
+        // Server returned something we don't recognise.  Treat as "can't verify
+        // model list" but don't hard-block — the server might still work fine.
+        return null;
+      }
     } catch (err) {
       return (
         `${this.config.displayName} not reachable at ${this.config.baseUrl} ` +
         `(${(err as Error).message}). Check that the local server is running ` +
-        `and that --base-url matches.`
+        `and that --base-url matches.\n` +
+        `Tip: for LM Studio include the /v1 segment: http://<host>:1234/v1`
       );
     }
 

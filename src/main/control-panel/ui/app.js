@@ -97,6 +97,7 @@ function applyStateToDom() {
     $('#cfg-apiKey').value = '';
     $('#cfg-temperature').value = c.temperature;
     updateOnlineWarning(c.baseUrl);
+    updateBaseUrlHint(c.provider, c.baseUrl);
   }
 
   if (!dirtyForms.has('system-prompt')) {
@@ -582,8 +583,26 @@ function wireProvider() {
       dirtyForms.add('provider');
       // Preset buttons make an intentional choice — show warning immediately.
       updateOnlineWarning($('#cfg-baseUrl').value);
+      updateBaseUrlHint($('#cfg-provider').value, $('#cfg-baseUrl').value);
     });
   }
+  // Validate base URL live and on provider change.
+  const checkBaseUrl = () => {
+    const url = $('#cfg-baseUrl').value.trim();
+    const provider = $('#cfg-provider').value;
+    const hint = $('#baseurl-hint');
+    if (!hint) return;
+    if (provider === 'openai-compat' && url && !/\/v\d+\/?$/.test(url.replace(/\/$/, ''))) {
+      hint.textContent = '⚠ Most OpenAI-compatible servers need a version suffix — e.g. /v1';
+      hint.classList.remove('hidden');
+    } else {
+      hint.textContent = '';
+      hint.classList.add('hidden');
+    }
+  };
+  $('#cfg-baseUrl').addEventListener('input', checkBaseUrl);
+  $('#cfg-provider').addEventListener('change', checkBaseUrl);
+
   $('#goto-model-guide')?.addEventListener('click', () => setTab('model-guide'));
 }
 
@@ -692,6 +711,18 @@ function isDomainUrl(url) {
     return /[a-z]/.test(h) && h.includes('.');
   } catch {
     return false;
+  }
+}
+
+function updateBaseUrlHint(provider, url) {
+  const hint = $('#baseurl-hint');
+  if (!hint) return;
+  if (provider === 'openai-compat' && url && !/\/v\d+\/?$/.test(String(url).replace(/\/$/, ''))) {
+    hint.textContent = '⚠ Most OpenAI-compatible servers need a version suffix — e.g. /v1';
+    hint.classList.remove('hidden');
+  } else {
+    hint.textContent = '';
+    hint.classList.add('hidden');
   }
 }
 
