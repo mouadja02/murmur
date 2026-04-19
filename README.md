@@ -18,7 +18,7 @@
 
 Murmur is a tiny floating button that sits on top of your desktop. You **tap it and talk**, and a few seconds later a clean, structured prompt appears exactly where your cursor is — in Cursor, ChatGPT, a terminal, a GitHub issue, anywhere.
 
-Under the hood, your voice is transcribed **on your own machine** (with `whisper.cpp`), then rewritten into a high-quality prompt by **your own local LLM** (Ollama, LM Studio, llama.cpp server — your choice). Nothing ever leaves your computer.
+Under the hood, your voice is transcribed **on your own machine** (with `whisper.cpp`), then rewritten into a high-quality prompt by **your own local LLM** (Ollama, LM Studio, llama.cpp server — your choice). Nothing ever leaves your computer unless you explicitly configure a cloud endpoint.
 
 Think of it as:
 
@@ -44,7 +44,7 @@ You need **Node.js 20+**, a working microphone, and a local LLM server running s
 ### Option A — just try it (no clone, ~15 s)
 
 ```bash
-npx @mouadja/murmur
+npx @mouadja02/murmur
 ```
 
 That pulls the published package from npm, runs the pre-launch banner, and spins up the overlay.
@@ -67,17 +67,17 @@ If you prefer to run the setup step manually (e.g. on a CI agent):
 
 ```bash
 # Windows: downloads whisper-cli.exe + ggml-base.en.bin into <userData>/bin/whisper/
-npx @mouadja/murmur setup:whisper
+npx @mouadja02/murmur setup:whisper
 
 # macOS / Linux: downloads ggml-base.en.bin into ./models/
 # and prints the exact command to install whisper-cli via your package manager
-npx @mouadja/murmur setup:whisper
+npx @mouadja02/murmur setup:whisper
 ```
 
 ### Option B — install globally
 
 ```bash
-npm install -g @mouadja/murmur
+npm install -g @mouadja02/murmur
 murmur
 ```
 
@@ -140,10 +140,11 @@ Every session gets a timestamped folder under `logs/` with the WAV, the raw tran
 - **Toggle hotkey** — `Ctrl+Shift+H` hides / shows the overlay from any app.
 - **Right-click menu** — open the control panel, reset position, quit.
 - **Control panel on localhost** — browser-based UI for system prompt, skills, provider, hotkeys, and paths. Changes hot-reload without restarting.
-- **Skills as Markdown** — drop `.md` files into `./skills/`, toggle them on/off from the panel. Version-controllable, shareable.
+- **Skills as Markdown** — drop `.md` files into `./skills/`, toggle them on/off from the panel. Import directly from a local file or a raw URL. Version-controllable, shareable.
+- **CLI / env override badges** — when a field is locked by a `--flag` or env var, the control panel marks it read-only with a clear badge and tooltip explaining exactly how to unlock it.
 - **Terminal pre-launch banner** — every `pnpm dev` shows your current setup and offers a one-key menu to edit the prompt or jump to the panel.
-- **Provider agnostic** — Ollama native API, any OpenAI-compatible server (LM Studio, llama.cpp server, vLLM, Jan, KoboldCpp, oobabooga, …).
-- **100 % local** — no telemetry, no outbound network calls except to the LLM server you configured.
+- **Provider agnostic** — Ollama native API, any OpenAI-compatible server (LM Studio, llama.cpp server, vLLM, Jan, KoboldCpp, oobabooga, …), and Anthropic Claude.
+- **100 % local by default** — no telemetry, no outbound network calls except to the LLM server you configured.
 - **Session logs** — every run writes audio + timings + prompts to `logs/<timestamp>/` for full traceability.
 
 ---
@@ -155,13 +156,16 @@ Open it from the overlay (right-click → **Open control panel**), from the pre-
 | Tab | What you can do |
 | --- | --- |
 | **System prompt** | Live-edit the active prompt and see the composed preview (base + enabled skills). |
-| **Skills** | Add, edit, rename, delete skills. One click to enable/disable each. |
-| **Provider** | Switch provider, base URL, model, API key. One-click presets for Ollama / LM Studio / llama.cpp. **Test connection** button reports latency. |
+| **Skills** | Add, edit, rename, delete skills. Import from a local `.md` file or any raw Markdown URL (GitHub raw, Gist, …). One click to enable/disable each. |
+| **Provider** | Switch provider, base URL, model, API key, temperature. One-click presets for local and online providers. **Test connection** button reports latency. Fields pinned by CLI flags or env vars are shown read-only with a lock badge — see [Config precedence](#config-precedence). |
 | **Whisper** | Point to a different `whisper-cli` binary (or `whisper-cli.exe` on Windows) or `.bin` model. |
-| **Hotkeys** | Bind push-to-talk and toggle combos with live validation. |
+| **Hotkeys** | Bind push-to-talk and toggle combos. |
 | **Paths** | Logs dir, skills dir, and the resolved config file path. |
+| **Model guide** | Hardware-tiered model recommendations with one-click `ollama pull` copy commands. |
 
-Every save writes back to `%APPDATA%\murmur\config.json` atomically and hot-reloads in the running app — no restart needed.
+Every save writes back to the config file atomically and hot-reloads in the running app — no restart needed.
+
+> **Auto-refresh and form protection.** The panel polls `/api/state` every 4 seconds to keep the composed system prompt and skill list in sync. It will never overwrite a field you are actively editing — each form section tracks its own "dirty" state and auto-refresh skips it until you save.
 
 ---
 
@@ -184,6 +188,15 @@ No hedging, no apologies, no restating the question.
 
 You can author them in your editor (they're git-friendly) or in the control panel's **Skills** tab. Enabled skills are concatenated under an `## Active skills` header in the prompt sent to the LLM.
 
+### Importing skills
+
+The **Skills** tab has an **↑ Import** button that opens an import panel with two tabs:
+
+- **From file** — click to browse or drag-and-drop any `.md` file onto the drop zone. Parses YAML frontmatter (`id`, `name`, `description`) and body, then pre-fills the new-skill form.
+- **From URL** — paste any raw Markdown URL (e.g. a GitHub raw link or Gist) and click **Fetch**. Works with any public `.md` file.
+
+Both paths land in the new-skill form where you can review and adjust before saving.
+
 ---
 
 ## LLM providers
@@ -200,7 +213,7 @@ Pick one. The `openai-compat` provider covers practically every local server tha
 
 > `anthropic` also expects `/v1` in the base URL (`https://api.anthropic.com/v1`).
 
-> ⚠️ **Online provider data warning.** When `baseUrl` points to a non-localhost address Murmur's control panel shows a prominent warning. Cloud providers (OpenAI, Anthropic, OpenRouter, Groq…) receive your voice transcription text and refined prompts over the internet. Review each provider's privacy and data-retention policy before use. **We recommend a local model** for any sensitive or proprietary work — see the [Model guide](#model-guide) below.
+> ⚠️ **Online provider data notice.** When `baseUrl` points to a hostname (not `localhost` or an IP address), the control panel shows a warning banner after you save. Cloud providers receive your voice transcription text and refined prompts. Review each provider's privacy and data-retention policy before use. **We recommend a local model** for any sensitive or proprietary work — see the [Model guide](#model-guide) below.
 
 ### Quick recipes
 
@@ -263,6 +276,28 @@ The same overlay controls live in the **Overlay** widget at the top-right of the
 
 ---
 
+## Config precedence
+
+Settings are resolved in this order, highest to lowest:
+
+```
+CLI flags  >  environment variables  >  config file  >  built-in defaults
+```
+
+This means a `--model` flag or `LLM_MODEL` env var will always win over whatever is saved in `config.json`. Saving from the control panel writes to the config file, but the change appears to revert if a higher-precedence source is active.
+
+**The control panel makes this explicit.** Any field whose current value comes from a CLI flag or env var is rendered read-only with a coloured badge beneath it:
+
+```
+Locked by --model CLI flag
+```
+
+Hovering the badge shows a tooltip: *"Restart Murmur without the --model flag to edit this here."*
+
+To unlock a field: remove the corresponding entry from your `.env` file or drop the flag from the `pnpm dev` command.
+
+---
+
 ## Session logs
 
 Every invocation writes to `logs/<ISO-timestamp>/`:
@@ -286,7 +321,7 @@ logs/2026-04-17T19-28-01-234Z/
 <details>
 <summary><strong>CLI flags</strong></summary>
 
-CLI flags trump the config file. Append them after `pnpm dev`:
+CLI flags trump the config file and environment variables. Append them after `pnpm dev`:
 
 ```powershell
 pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qwen/qwen3-1.7b
@@ -294,10 +329,10 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 
 | Flag | Purpose |
 | --- | --- |
-| `--provider <ollama \| openai-compat>` | Provider implementation |
+| `--provider <ollama \| openai-compat \| anthropic>` | Provider implementation |
 | `--base-url <url>` | Provider HTTP base URL |
 | `--model <id>` | Model identifier on the provider |
-| `--api-key <key>` | Bearer token (`openai-compat` only) |
+| `--api-key <key>` | Bearer token (required for Anthropic; optional for `openai-compat`) |
 | `--temperature <float>` | Sampling temperature (default `0.2`) |
 | `--whisper-cli <path>` | Path or `PATH`-resolvable name of `whisper-cli` (`whisper-cli.exe` on Windows) |
 | `--whisper-model <path>` | Path to a `ggml-*.bin` model file |
@@ -316,6 +351,8 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 | `-h`, `--help` | Show help and exit |
 
 Combo strings parse from `Ctrl+Shift+Space` form. Modifiers: `Ctrl`/`Control`, `Shift`, `Alt`/`Option`, `Cmd`/`Win`/`Meta`/`Super`. Keys: `A`–`Z`, digits, `Space`, `Enter`, `Tab`, `Escape`, `F1`–`F12`, and friends.
+
+> **Note.** Any field set via a CLI flag will appear **locked** in the control panel (read-only, with a badge). Drop the flag from the command to make the field editable again.
 
 </details>
 
@@ -360,9 +397,9 @@ Any field can be omitted; missing fields fall through to defaults. `overlay.posi
 </details>
 
 <details>
-<summary><strong>Environment variables (legacy, dev-only)</strong></summary>
+<summary><strong>Environment variables</strong></summary>
 
-Still supported for development workflows:
+Environment variables have lower precedence than CLI flags but higher than the config file. They are useful for `.env`-based development workflows and Docker/systemd deployments.
 
 | Variable | Maps to |
 | --- | --- |
@@ -376,6 +413,12 @@ Still supported for development workflows:
 | `MURMUR_HOTKEY` | `hotkeyCombo` |
 | `MURMUR_TOGGLE_HOTKEY` | `toggleHotkeyCombo` |
 | `MURMUR_LOGS_DIR` | `logsDir` |
+| `MURMUR_SKILLS_DIR` | `skillsDir` |
+| `MURMUR_SYSTEM_PROMPT` | `systemPrompt` |
+| `MURMUR_ENABLED_SKILLS` | `enabledSkills` (comma-separated) |
+| `MURMUR_CONTROL_PANEL_PORT` | `controlPanelPort` |
+
+Create a `.env` file in the project root to set them for `pnpm dev`. Any field set this way will appear **locked** in the control panel with an env-var badge (e.g. `Locked by LLM_MODEL env var`). Remove or comment out the line and restart to unlock it.
 
 </details>
 
@@ -419,14 +462,14 @@ The interactive **Model guide** tab in the control panel (`http://localhost:7331
 
 ### Privacy note for online providers
 
-When `baseUrl` is not a localhost address, Murmur shows a warning banner in the control panel. Cloud providers process your data under their own terms:
+When `baseUrl` is a domain hostname (not `localhost` or a bare IP), Murmur shows a warning banner in the control panel after you save. Cloud providers process your data under their own terms:
 
 - [OpenAI privacy policy](https://openai.com/policies/privacy-policy)
 - [Anthropic privacy policy](https://www.anthropic.com/privacy)
 - [OpenRouter privacy policy](https://openrouter.ai/privacy)
 - [Groq privacy policy](https://groq.com/privacy-policy/)
 
-For production or privacy-sensitive use, **run a local model**.
+For production or privacy-sensitive use, **run a local model**. The warning does **not** appear for IP addresses or `localhost` — those could be your own private server.
 
 ---
 
