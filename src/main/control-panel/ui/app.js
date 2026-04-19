@@ -1,13 +1,59 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+// Tracks which form sections have unsaved user edits so auto-refresh never
+// overwrites in-progress work.  Cleared on a successful save of that section.
+const dirtyForms = new Set();
+
 const state = {
   config: null,
+  overrides: {},
   skills: [],
   composedSystemPrompt: '',
   providers: [],
   selectedSkillId: null,
   dirtySkill: false,
+};
+
+/**
+ * Maps a ResolvedConfig key to:
+ *   - inputId : the form control to mark read-only when an override is active
+ *   - flag    : the CLI flag the user would have to drop to regain control
+ *   - env     : the env var alternative
+ *   - section : dirty-form section that should also be considered "locked"
+ */
+const FIELD_INFO = {
+  provider: { inputId: 'cfg-provider', flag: '--provider', env: 'LLM_PROVIDER' },
+  baseUrl: { inputId: 'cfg-baseUrl', flag: '--base-url', env: 'LLM_BASE_URL' },
+  model: { inputId: 'cfg-model', flag: '--model', env: 'LLM_MODEL' },
+  apiKey: { inputId: 'cfg-apiKey', flag: '--api-key', env: 'LLM_API_KEY' },
+  temperature: { inputId: 'cfg-temperature', flag: '--temperature', env: 'LLM_TEMPERATURE' },
+  whisperCliPath: { inputId: 'cfg-whisperCliPath', flag: '--whisper-cli', env: 'WHISPER_CLI_PATH' },
+  whisperModelPath: {
+    inputId: 'cfg-whisperModelPath',
+    flag: '--whisper-model',
+    env: 'WHISPER_MODEL_PATH',
+  },
+  sampleRate: { inputId: 'cfg-sampleRate', flag: '--sample-rate', env: 'WHISPER_SAMPLE_RATE' },
+  hotkeyCombo: { inputId: 'cfg-hotkeyCombo', flag: '--hotkey', env: 'MURMUR_HOTKEY' },
+  toggleHotkeyCombo: {
+    inputId: 'cfg-toggleHotkeyCombo',
+    flag: '--toggle-hotkey',
+    env: 'MURMUR_TOGGLE_HOTKEY',
+  },
+  clipboardRestoreDelayMs: {
+    inputId: 'cfg-clipboardRestoreDelayMs',
+    flag: '--clipboard-restore-delay',
+    env: 'MURMUR_CLIPBOARD_RESTORE_DELAY_MS',
+  },
+  systemPrompt: { inputId: 'system-prompt', flag: '--system-prompt', env: 'MURMUR_SYSTEM_PROMPT' },
+  controlPanelPort: {
+    inputId: 'cfg-controlPanelPort',
+    flag: '--control-panel-port',
+    env: 'MURMUR_CONTROL_PANEL_PORT',
+  },
+  logsDir: { inputId: 'cfg-logsDir', flag: '--logs-dir', env: 'MURMUR_LOGS_DIR' },
+  skillsDir: { inputId: 'cfg-skillsDir', flag: '--skills-dir', env: 'MURMUR_SKILLS_DIR' },
 };
 
 async function api(method, path, body) {
@@ -38,35 +84,109 @@ function applyStateToDom() {
   const c = state.config;
   if (!c) return;
 
-  $('#cfg-provider').value = c.provider;
-  $('#cfg-baseUrl').value = c.baseUrl;
-  $('#cfg-model').value = c.model;
-  $('#cfg-apiKey').placeholder = c.apiKeySet
-    ? '•••••••• (stored, leave blank to keep)'
-    : '(not set)';
-  $('#cfg-apiKey').value = '';
-  $('#cfg-temperature').value = c.temperature;
-  $('#cfg-whisperCliPath').value = c.whisperCliPath;
-  $('#cfg-whisperModelPath').value = c.whisperModelPath;
-  $('#cfg-sampleRate').value = c.sampleRate;
-  $('#cfg-hotkeyCombo').value = c.hotkeyCombo;
-  $('#cfg-toggleHotkeyCombo').value = c.toggleHotkeyCombo;
-  $('#cfg-clipboardRestoreDelayMs').value = c.clipboardRestoreDelayMs;
-  $('#cfg-logsDir').value = c.logsDir;
-  $('#cfg-skillsDir').value = c.skillsDir;
-  $('#cfg-controlPanelPort').value = c.controlPanelPort;
-  $('#cfg-configFilePath').value = c.configFilePath;
+  // Each form section is only written when it has no unsaved user edits.
+  // dirtyForms entries are set by input listeners and cleared on save.
 
-  $('#system-prompt').value = c.systemPrompt;
-  updatePromptCharCount();
+  if (!dirtyForms.has('provider')) {
+    $('#cfg-provider').value = c.provider;
+    $('#cfg-baseUrl').value = c.baseUrl;
+    $('#cfg-model').value = c.model;
+    $('#cfg-apiKey').placeholder = c.apiKeySet
+      ? '•••••••• (stored, leave blank to keep)'
+      : '(not set)';
+    $('#cfg-apiKey').value = '';
+    $('#cfg-temperature').value = c.temperature;
+    updateOnlineWarning(c.baseUrl);
+    updateBaseUrlHint(c.provider, c.baseUrl);
+  }
+
+  if (!dirtyForms.has('system-prompt')) {
+    $('#system-prompt').value = c.systemPrompt;
+    updatePromptCharCount();
+  }
   $('#composed-prompt').textContent = state.composedSystemPrompt;
+
+  if (!dirtyForms.has('whisper')) {
+    $('#cfg-whisperCliPath').value = c.whisperCliPath;
+    $('#cfg-whisperModelPath').value = c.whisperModelPath;
+    $('#cfg-sampleRate').value = c.sampleRate;
+  }
+
+  if (!dirtyForms.has('hotkeys')) {
+    $('#cfg-hotkeyCombo').value = c.hotkeyCombo;
+    $('#cfg-toggleHotkeyCombo').value = c.toggleHotkeyCombo;
+    $('#cfg-clipboardRestoreDelayMs').value = c.clipboardRestoreDelayMs;
+  }
+
+  if (!dirtyForms.has('paths')) {
+    $('#cfg-logsDir').value = c.logsDir;
+    $('#cfg-skillsDir').value = c.skillsDir;
+    $('#cfg-controlPanelPort').value = c.controlPanelPort;
+    $('#cfg-configFilePath').value = c.configFilePath;
+  }
 
   renderSkillList();
   if (state.selectedSkillId) {
-    const found = state.skills.find((s) => s.id === state.selectedSkillId);
-    if (found) selectSkill(found.id, true);
-    else showSkillForm(null);
+    if (state.selectedSkillId === '__new__') {
+      // User is filling in a new skill — never clobber it on refresh.
+    } else {
+      const found = state.skills.find((s) => s.id === state.selectedSkillId);
+      if (found) selectSkill(found.id, true);
+      else showSkillForm(null);
+    }
   }
+}
+
+/**
+ * For every field in `state.overrides`, lock the matching input and attach a
+ * small chip explaining which CLI flag / env var is shadowing it.  Saves to
+ * locked fields would silently no-op on the next config reload, so making
+ * them read-only is the only honest UX.
+ */
+function applyOverridesToDom() {
+  const overrides = state.overrides ?? {};
+  for (const [key, info] of Object.entries(FIELD_INFO)) {
+    const input = document.getElementById(info.inputId);
+    if (!input) continue;
+    const source = overrides[key];
+    setFieldLocked(input, info, source);
+  }
+}
+
+function setFieldLocked(input, info, source) {
+  const wrapper = input.closest('.field') ?? input.parentElement;
+  const existing = wrapper?.querySelector('.override-chip');
+
+  if (!source) {
+    input.readOnly = false;
+    input.disabled = false;
+    input.classList.remove('locked');
+    existing?.remove();
+    return;
+  }
+
+  // SELECTs don't honour readOnly, so we disable them instead.
+  if (input.tagName === 'SELECT') input.disabled = true;
+  else input.readOnly = true;
+  input.classList.add('locked');
+
+  const label =
+    source === 'cli' ? `Locked by ${info.flag} CLI flag` : `Locked by ${info.env} env var`;
+  const tip = `Restart Murmur without ${
+    source === 'cli' ? `the ${info.flag} flag` : `the ${info.env} environment variable`
+  } to edit this here.`;
+
+  if (existing) {
+    existing.textContent = label;
+    existing.title = tip;
+    return;
+  }
+  if (!wrapper) return;
+  const chip = document.createElement('span');
+  chip.className = 'override-chip';
+  chip.textContent = label;
+  chip.title = tip;
+  wrapper.appendChild(chip);
 }
 
 function updatePromptCharCount() {
@@ -159,11 +279,13 @@ async function refresh() {
   try {
     const snap = await api('GET', '/api/state');
     state.config = snap.config;
+    state.overrides = snap.overrides ?? {};
     state.skills = snap.skills;
     state.composedSystemPrompt = snap.composedSystemPrompt;
     state.providers = snap.providers;
     state.overlay = snap.overlay ?? { visible: null };
     applyStateToDom();
+    applyOverridesToDom();
     applyOverlayStateToDom();
     setSaveStatus('');
   } catch (err) {
@@ -236,11 +358,15 @@ function wireTabs() {
 }
 
 function wireSystemPrompt() {
-  $('#system-prompt').addEventListener('input', updatePromptCharCount);
+  $('#system-prompt').addEventListener('input', () => {
+    dirtyForms.add('system-prompt');
+    updatePromptCharCount();
+  });
   $('#btn-save-prompt').addEventListener('click', async () => {
     try {
       setSaveStatus('Saving…');
       await api('PUT', '/api/system-prompt', { prompt: $('#system-prompt').value });
+      dirtyForms.delete('system-prompt');
       setSaveStatus('Saved', 'ok');
       toast('System prompt saved', 'success');
       await refresh();
@@ -253,6 +379,7 @@ function wireSystemPrompt() {
     if (!confirm('Reset system prompt to the built-in default?')) return;
     try {
       await api('PUT', '/api/system-prompt', { prompt: DEFAULT_PROMPT });
+      dirtyForms.delete('system-prompt');
       toast('Reset to default', 'success');
       await refresh();
     } catch (err) {
@@ -280,7 +407,9 @@ function wireSkills() {
       if (isNew) {
         const snap = await api('POST', '/api/skills', payload);
         applySnapshot(snap);
-        state.selectedSkillId = payload.id || slugify(payload.name);
+        // Use the id the server assigned (may differ from the client-guessed slug).
+        const created = snap.skills.find((s) => s.name === payload.name);
+        state.selectedSkillId = created?.id ?? slugify(payload.name);
       } else {
         const id = state.selectedSkillId;
         const snap = await api('PUT', `/api/skills/${encodeURIComponent(id)}`, payload);
@@ -332,10 +461,12 @@ function wireSkills() {
 
 function applySnapshot(snap) {
   state.config = snap.config;
+  state.overrides = snap.overrides ?? state.overrides ?? {};
   state.skills = snap.skills;
   state.composedSystemPrompt = snap.composedSystemPrompt;
   state.providers = snap.providers ?? state.providers;
   applyStateToDom();
+  applyOverridesToDom();
 }
 
 function slugify(s) {
@@ -369,6 +500,14 @@ function readConfigForm(extra = {}) {
 }
 
 function wireProvider() {
+  // Mark provider form dirty whenever any field is touched.
+  for (const id of ['cfg-provider', 'cfg-baseUrl', 'cfg-model', 'cfg-apiKey', 'cfg-temperature']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', () => dirtyForms.add('provider'));
+    el.addEventListener('change', () => dirtyForms.add('provider'));
+  }
+
   $('#provider-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const apiKey = $('#cfg-apiKey').value;
@@ -382,7 +521,10 @@ function wireProvider() {
     else if (apiKey === '' && $('#cfg-apiKey').dataset.clear === '1') patch.apiKey = null;
     try {
       const snap = await api('PUT', '/api/config', patch);
+      dirtyForms.delete('provider');
       applySnapshot(snap);
+      // Evaluate the online warning only after the user deliberately saves.
+      updateOnlineWarning(patch.baseUrl);
       toast('Provider saved', 'success');
     } catch (err) {
       toast(err.message, 'error');
@@ -421,16 +563,62 @@ function wireProvider() {
       } else if (which === 'llamacpp') {
         $('#cfg-provider').value = 'openai-compat';
         $('#cfg-baseUrl').value = 'http://localhost:8080/v1';
+      } else if (which === 'openai') {
+        $('#cfg-provider').value = 'openai-compat';
+        $('#cfg-baseUrl').value = 'https://api.openai.com/v1';
+        $('#cfg-model').value = 'gpt-4o-mini';
+      } else if (which === 'anthropic-haiku') {
+        $('#cfg-provider').value = 'anthropic';
+        $('#cfg-baseUrl').value = 'https://api.anthropic.com/v1';
+        $('#cfg-model').value = 'claude-haiku-4-5';
+      } else if (which === 'openrouter') {
+        $('#cfg-provider').value = 'openai-compat';
+        $('#cfg-baseUrl').value = 'https://openrouter.ai/api/v1';
+        $('#cfg-model').value = 'meta-llama/llama-3.1-8b-instruct:free';
+      } else if (which === 'groq') {
+        $('#cfg-provider').value = 'openai-compat';
+        $('#cfg-baseUrl').value = 'https://api.groq.com/openai/v1';
+        $('#cfg-model').value = 'llama-3.1-8b-instant';
       }
+      dirtyForms.add('provider');
+      // Preset buttons make an intentional choice — show warning immediately.
+      updateOnlineWarning($('#cfg-baseUrl').value);
+      updateBaseUrlHint($('#cfg-provider').value, $('#cfg-baseUrl').value);
     });
   }
+  // Validate base URL live and on provider change.
+  const checkBaseUrl = () => {
+    const url = $('#cfg-baseUrl').value.trim();
+    const provider = $('#cfg-provider').value;
+    const hint = $('#baseurl-hint');
+    if (!hint) return;
+    if (provider === 'openai-compat' && url && !/\/v\d+\/?$/.test(url.replace(/\/$/, ''))) {
+      hint.textContent = '⚠ Most OpenAI-compatible servers need a version suffix — e.g. /v1';
+      hint.classList.remove('hidden');
+    } else {
+      hint.textContent = '';
+      hint.classList.add('hidden');
+    }
+  };
+  $('#cfg-baseUrl').addEventListener('input', checkBaseUrl);
+  $('#cfg-provider').addEventListener('change', checkBaseUrl);
+
+  $('#goto-model-guide')?.addEventListener('click', () => setTab('model-guide'));
 }
 
-function wireGenericForm(selector, extract) {
-  $(selector).addEventListener('submit', async (e) => {
+function wireGenericForm(selector, extract, dirtyKey) {
+  const form = $(selector);
+  if (dirtyKey) {
+    for (const el of form.querySelectorAll('input, textarea, select')) {
+      el.addEventListener('input', () => dirtyForms.add(dirtyKey));
+      el.addEventListener('change', () => dirtyForms.add(dirtyKey));
+    }
+  }
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       const snap = await api('PUT', '/api/config', extract());
+      if (dirtyKey) dirtyForms.delete(dirtyKey);
       applySnapshot(snap);
       toast('Saved', 'success');
     } catch (err) {
@@ -440,27 +628,39 @@ function wireGenericForm(selector, extract) {
 }
 
 function wireWhisper() {
-  wireGenericForm('#whisper-form', () => ({
-    whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
-    whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
-    sampleRate: Number($('#cfg-sampleRate').value),
-  }));
+  wireGenericForm(
+    '#whisper-form',
+    () => ({
+      whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
+      whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
+      sampleRate: Number($('#cfg-sampleRate').value),
+    }),
+    'whisper',
+  );
 }
 
 function wireHotkeys() {
-  wireGenericForm('#hotkeys-form', () => ({
-    hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
-    toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
-    clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
-  }));
+  wireGenericForm(
+    '#hotkeys-form',
+    () => ({
+      hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
+      toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
+      clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
+    }),
+    'hotkeys',
+  );
 }
 
 function wirePaths() {
-  wireGenericForm('#paths-form', () => ({
-    logsDir: $('#cfg-logsDir').value.trim(),
-    skillsDir: $('#cfg-skillsDir').value.trim(),
-    controlPanelPort: Number($('#cfg-controlPanelPort').value),
-  }));
+  wireGenericForm(
+    '#paths-form',
+    () => ({
+      logsDir: $('#cfg-logsDir').value.trim(),
+      skillsDir: $('#cfg-skillsDir').value.trim(),
+      controlPanelPort: Number($('#cfg-controlPanelPort').value),
+    }),
+    'paths',
+  );
 }
 
 function wireSaveAll() {
@@ -469,6 +669,7 @@ function wireSaveAll() {
       setSaveStatus('Saving…');
       await api('PUT', '/api/system-prompt', { prompt: $('#system-prompt').value });
       await api('PUT', '/api/config', readConfigForm());
+      dirtyForms.clear();
       setSaveStatus('Saved', 'ok');
       toast('Everything saved', 'success');
       await refresh();
@@ -489,6 +690,160 @@ Rules:
 - Keep the user's voice. Do not make it corporate or verbose.
 - Output ONLY the refined prompt. No preamble like "Here is the refined prompt:". No meta-commentary. No markdown code fences unless the refined prompt itself needs them.`;
 
+/**
+ * Returns true when `url`'s hostname looks like a domain name (contains
+ * at least one letter and at least one dot), as opposed to localhost, a bare
+ * IPv4 address, or an IPv6 address.
+ *
+ * We only warn for domain-based URLs because an IP address could be the
+ * user's own private or dedicated server — we can't know either way.
+ */
+function isDomainUrl(url) {
+  try {
+    const h = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (!h) return false;
+    if (h === 'localhost') return false;
+    // IPv4: four groups of digits separated by dots
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false;
+    // IPv6: contains colons
+    if (h.includes(':')) return false;
+    // Anything with letters and a dot is a domain name
+    return /[a-z]/.test(h) && h.includes('.');
+  } catch {
+    return false;
+  }
+}
+
+function updateBaseUrlHint(provider, url) {
+  const hint = $('#baseurl-hint');
+  if (!hint) return;
+  if (provider === 'openai-compat' && url && !/\/v\d+\/?$/.test(String(url).replace(/\/$/, ''))) {
+    hint.textContent = '⚠ Most OpenAI-compatible servers need a version suffix — e.g. /v1';
+    hint.classList.remove('hidden');
+  } else {
+    hint.textContent = '';
+    hint.classList.add('hidden');
+  }
+}
+
+function updateOnlineWarning(baseUrl) {
+  const el = $('#online-warning');
+  if (!el) return;
+  if (baseUrl && isDomainUrl(baseUrl)) {
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
+// ── Skill import ──────────────────────────────────────────────
+
+/**
+ * Parse a Markdown skill file (YAML frontmatter + body).
+ * Returns id/name/description/content. Works with or without frontmatter.
+ */
+function parseSkillMarkdown(text) {
+  const match = text.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?([\s\S]*)$/);
+  if (!match) {
+    return { id: '', name: '', description: '', content: text.trim() };
+  }
+  const yaml = match[1];
+  const content = match[2].trim();
+  const get = (key) => (yaml.match(new RegExp(`^${key}:\\s*(.+)$`, 'm')) || [])[1]?.trim() ?? '';
+  return { id: get('id'), name: get('name'), description: get('description'), content };
+}
+
+function prefillNewSkillForm(parsed) {
+  showNewSkillForm();
+  if (parsed.name) $('#skill-name').value = parsed.name;
+  if (parsed.description) $('#skill-desc').value = parsed.description;
+  if (parsed.id) {
+    $('#skill-id').value = parsed.id;
+    $('#skill-id').readOnly = false; // let user adjust
+  }
+  if (parsed.content) $('#skill-content').value = parsed.content;
+  // Collapse the import panel
+  $('#skill-import-panel').classList.add('hidden');
+  // Focus the most useful field
+  (parsed.name ? $('#skill-content') : $('#skill-name')).focus();
+}
+
+function wireImportSkill() {
+  const btn = $('#btn-import-skill');
+  const panel = $('#skill-import-panel');
+
+  btn.addEventListener('click', () => panel.classList.toggle('hidden'));
+
+  // Import sub-tabs (File / URL)
+  for (const tab of $$('.import-tab')) {
+    tab.addEventListener('click', () => {
+      for (const t of $$('.import-tab')) t.classList.remove('active');
+      tab.classList.add('active');
+      for (const p of $$('.import-pane')) p.classList.add('hidden');
+      $(`#import-pane-${tab.dataset.itab}`).classList.remove('hidden');
+    });
+  }
+
+  // File import
+  const fileInput = $('#skill-file-input');
+  const fileLabel = $('#import-file-label');
+
+  fileLabel.addEventListener('click', () => fileInput.click());
+  fileLabel.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    fileLabel.classList.add('drag-over');
+  });
+  fileLabel.addEventListener('dragleave', () => fileLabel.classList.remove('drag-over'));
+  fileLabel.addEventListener('drop', (e) => {
+    e.preventDefault();
+    fileLabel.classList.remove('drag-over');
+    const file = e.dataTransfer?.files[0];
+    if (file) readSkillFile(file);
+  });
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) readSkillFile(file);
+    fileInput.value = '';
+  });
+
+  function readSkillFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => prefillNewSkillForm(parseSkillMarkdown(String(e.target.result)));
+    reader.onerror = () => toast('Could not read file', 'error');
+    reader.readAsText(file);
+  }
+
+  // URL import
+  const urlInput = $('#skill-url-input');
+  const fetchBtn = $('#btn-fetch-skill');
+
+  async function fetchSkillUrl() {
+    const url = urlInput.value.trim();
+    if (!url) {
+      toast('Enter a URL first', 'error');
+      return;
+    }
+    fetchBtn.textContent = 'Fetching\u2026';
+    fetchBtn.disabled = true;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      prefillNewSkillForm(parseSkillMarkdown(await res.text()));
+      urlInput.value = '';
+    } catch (err) {
+      toast(`Could not fetch: ${err.message}`, 'error');
+    } finally {
+      fetchBtn.textContent = 'Fetch';
+      fetchBtn.disabled = false;
+    }
+  }
+
+  fetchBtn.addEventListener('click', fetchSkillUrl);
+  urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') fetchSkillUrl();
+  });
+}
+
 wireTabs();
 wireSystemPrompt();
 wireSkills();
@@ -498,7 +853,15 @@ wireHotkeys();
 wirePaths();
 wireSaveAll();
 wireOverlayControls();
+wireImportSkill();
+
+// Cross-tab navigation links inside panes
+document.getElementById('goto-provider')?.addEventListener('click', () => setTab('provider'));
+
 refresh();
 setInterval(() => {
+  // Don't overwrite fields while the user is actively typing in any input/textarea/select.
+  const active = document.activeElement;
+  if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
   refresh().catch(() => {});
 }, 4000);

@@ -16,7 +16,12 @@ export async function pasteAtCursor(text: string, opts: InjectOptions): Promise<
   clipboard.writeText(text);
 
   await sleep(30);
-  await keyboard.type(Key.LeftControl, Key.V);
+  // macOS uses Cmd+V; Windows and Linux use Ctrl+V.
+  if (process.platform === 'darwin') {
+    await keyboard.type(Key.LeftSuper, Key.V);
+  } else {
+    await keyboard.type(Key.LeftControl, Key.V);
+  }
 
   await sleep(opts.clipboardRestoreDelayMs);
   clipboard.writeText(previous);

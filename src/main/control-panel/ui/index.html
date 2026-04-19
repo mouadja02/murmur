@@ -53,6 +53,7 @@
       <button type="button" class="tab" data-tab="whisper">Whisper</button>
       <button type="button" class="tab" data-tab="hotkeys">Hotkeys</button>
       <button type="button" class="tab" data-tab="paths">Paths</button>
+      <button type="button" class="tab" data-tab="model-guide">Model guide</button>
     </nav>
 
     <main class="content">
@@ -91,7 +92,36 @@
           <aside class="skill-list">
             <div class="skill-list-header">
               <span id="skill-count" class="hint"></span>
-              <button type="button" id="btn-new-skill" class="btn btn-ghost">+ New skill</button>
+              <div class="skill-list-btns">
+                <button type="button" id="btn-import-skill" class="btn btn-ghost" title="Import from a .md file or URL">↑ Import</button>
+                <button type="button" id="btn-new-skill" class="btn btn-ghost">+ New skill</button>
+              </div>
+            </div>
+            <div id="skill-import-panel" class="skill-import-panel hidden">
+              <div class="import-tabs">
+                <button type="button" class="import-tab active" data-itab="file">From file</button>
+                <button type="button" class="import-tab" data-itab="url">From URL</button>
+              </div>
+              <div id="import-pane-file" class="import-pane">
+                <label id="import-file-label" class="import-file-label">
+                  Click or drag a <code>.md</code> skill file
+                </label>
+                <input id="skill-file-input" type="file" accept=".md,.txt" style="display:none" />
+              </div>
+              <div id="import-pane-url" class="import-pane hidden">
+                <div class="import-url-row">
+                  <input
+                    id="skill-url-input"
+                    type="text"
+                    placeholder="https://raw.githubusercontent.com/…/skill.md"
+                    autocomplete="off"
+                  />
+                  <button type="button" id="btn-fetch-skill" class="btn btn-ghost">Fetch</button>
+                </div>
+                <p class="hint" style="margin:4px 0 0">
+                  Works with any raw Markdown URL (GitHub raw, Gist, etc.)
+                </p>
+              </div>
             </div>
             <ul id="skill-list"></ul>
           </aside>
@@ -140,17 +170,35 @@
           <h2>LLM provider</h2>
           <p>Runs entirely on your machine by default. No data leaves without a base URL you set.</p>
         </div>
+
+        <div id="online-warning" class="online-warning hidden" role="alert">
+          <div class="online-warning-icon">⚠</div>
+          <div class="online-warning-body">
+            <strong>External domain detected.</strong>
+            If this endpoint belongs to a third-party service, your voice transcriptions
+            and refined prompts will be sent to and processed on their servers.
+            Third-party providers may store or use this data under their own retention policies.
+            <span class="online-warning-links">
+              For privacy-sensitive work we recommend a local model —
+              see the <button type="button" class="link-btn" id="goto-model-guide">Model guide</button>
+              for hardware-matched options that keep everything on your machine.
+            </span>
+          </div>
+        </div>
+
         <form id="provider-form">
           <label>
             <span>Provider</span>
             <select id="cfg-provider">
-              <option value="ollama">Ollama</option>
-              <option value="openai-compat">OpenAI-compatible (LM Studio, llama.cpp server)</option>
+              <option value="ollama">Ollama (local)</option>
+              <option value="openai-compat">OpenAI-compatible — LM Studio, llama.cpp, vLLM, OpenAI, OpenRouter…</option>
+              <option value="anthropic">Anthropic (Claude) ☁</option>
             </select>
           </label>
           <label>
             <span>Base URL</span>
             <input id="cfg-baseUrl" type="text" autocomplete="off" />
+            <span id="baseurl-hint" class="field-hint hidden"></span>
           </label>
           <label>
             <span>Model</span>
@@ -174,16 +222,33 @@
           </div>
         </form>
         <details class="expander">
-          <summary>Quick presets</summary>
+          <summary>Quick presets — local</summary>
           <div class="presets">
             <button type="button" class="preset" data-preset="ollama">
-              Ollama · qwen3:4b
+              Ollama · qwen3:4b (recommended default)
             </button>
             <button type="button" class="preset" data-preset="lmstudio">
-              LM Studio · 1234
+              LM Studio · localhost:1234
             </button>
             <button type="button" class="preset" data-preset="llamacpp">
-              llama.cpp server · 8080
+              llama.cpp server · localhost:8080
+            </button>
+          </div>
+        </details>
+        <details class="expander">
+          <summary>Quick presets — online ☁ (data leaves your machine)</summary>
+          <div class="presets">
+            <button type="button" class="preset preset-online" data-preset="openai">
+              OpenAI · gpt-4o-mini ☁
+            </button>
+            <button type="button" class="preset preset-online" data-preset="anthropic-haiku">
+              Anthropic · claude-haiku-4-5 ☁
+            </button>
+            <button type="button" class="preset preset-online" data-preset="openrouter">
+              OpenRouter · meta-llama/llama-3.1-8b-instruct:free ☁
+            </button>
+            <button type="button" class="preset preset-online" data-preset="groq">
+              Groq · llama-3.1-8b-instant ☁
             </button>
           </div>
         </details>
@@ -242,7 +307,7 @@
           </div>
         </form>
         <p class="hint">
-          Hotkey changes take effect on next app start.
+          Changes take effect immediately — no restart needed.
         </p>
       </section>
 
@@ -273,6 +338,175 @@
             <button id="btn-save-paths" type="submit" class="btn btn-primary">Save paths</button>
           </div>
         </form>
+      </section>
+
+      <section class="pane" data-pane="model-guide">
+        <div class="pane-header">
+          <h2>Model guide</h2>
+          <p>
+            Pick a local LLM that fits your machine. All tiers work with
+            <strong>Ollama</strong> — run <code>ollama pull &lt;model&gt;</code> then set it in
+            the <button type="button" class="link-btn" id="goto-provider">Provider</button> tab.
+          </p>
+        </div>
+
+        <div class="guide-privacy-note">
+          <strong>Privacy first.</strong>
+          Local models keep every word on your machine — no accounts, no cloud costs, no data
+          retention. Online providers (OpenAI, Anthropic, OpenRouter…) are convenient but send your
+          voice transcriptions and prompts to external servers. For a voice coding tool, we
+          <em>strongly recommend</em> a local model whenever your hardware supports it.
+        </div>
+
+        <div class="guide-tiers">
+          <div class="guide-tier">
+            <div class="tier-badge tier-very-low">Very low</div>
+            <div class="tier-spec">CPU only · ≤ 4 GB RAM</div>
+            <div class="tier-models">
+              <div class="tier-model">
+                <span class="model-name">qwen2.5:0.5b</span>
+                <span class="model-pull"><code>ollama pull qwen2.5:0.5b</code></span>
+                <span class="model-note">370 MB · fastest, basic quality</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">qwen3:0.6b</span>
+                <span class="model-pull"><code>ollama pull qwen3:0.6b</code></span>
+                <span class="model-note">520 MB · slightly better reasoning</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">tinyllama:1.1b</span>
+                <span class="model-pull"><code>ollama pull tinyllama</code></span>
+                <span class="model-note">638 MB · good for simple transforms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-tier">
+            <div class="tier-badge tier-low">Low</div>
+            <div class="tier-spec">CPU or integrated GPU · 8 GB RAM</div>
+            <div class="tier-models">
+              <div class="tier-model">
+                <span class="model-name">qwen3:1.7b</span>
+                <span class="model-pull"><code>ollama pull qwen3:1.7b</code></span>
+                <span class="model-note">1.1 GB · good prompt quality</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">gemma3:2b</span>
+                <span class="model-pull"><code>ollama pull gemma3:2b</code></span>
+                <span class="model-note">1.6 GB · Google's compact model</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">phi4-mini</span>
+                <span class="model-pull"><code>ollama pull phi4-mini</code></span>
+                <span class="model-note">2.5 GB · Microsoft, strong reasoning</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-tier guide-tier-recommended">
+            <div class="tier-badge tier-mid">Mid ★ default</div>
+            <div class="tier-spec">16 GB RAM · dedicated GPU 4–8 GB VRAM</div>
+            <div class="tier-models">
+              <div class="tier-model">
+                <span class="model-name">qwen3:4b</span>
+                <span class="model-pull"><code>ollama pull qwen3:4b</code></span>
+                <span class="model-note">2.6 GB · Murmur default, great balance</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">llama3.2:3b</span>
+                <span class="model-pull"><code>ollama pull llama3.2:3b</code></span>
+                <span class="model-note">2.0 GB · Meta, solid all-rounder</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">mistral:7b</span>
+                <span class="model-pull"><code>ollama pull mistral</code></span>
+                <span class="model-note">4.1 GB · instruction-following champion</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-tier">
+            <div class="tier-badge tier-high">High</div>
+            <div class="tier-spec">32 GB RAM · GPU 10–16 GB VRAM</div>
+            <div class="tier-models">
+              <div class="tier-model">
+                <span class="model-name">qwen3:8b</span>
+                <span class="model-pull"><code>ollama pull qwen3:8b</code></span>
+                <span class="model-note">5.2 GB · excellent prompt engineering</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">llama3.1:8b</span>
+                <span class="model-pull"><code>ollama pull llama3.1:8b</code></span>
+                <span class="model-note">4.9 GB · Meta flagship small</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">phi4:14b</span>
+                <span class="model-pull"><code>ollama pull phi4</code></span>
+                <span class="model-note">8.9 GB · Microsoft, strong reasoning</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-tier">
+            <div class="tier-badge tier-very-high">Very high</div>
+            <div class="tier-spec">64 GB RAM · GPU 24+ GB VRAM</div>
+            <div class="tier-models">
+              <div class="tier-model">
+                <span class="model-name">qwen3:14b</span>
+                <span class="model-pull"><code>ollama pull qwen3:14b</code></span>
+                <span class="model-note">9 GB · near-frontier local quality</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">qwen3:30b-a3b</span>
+                <span class="model-pull"><code>ollama pull qwen3:30b-a3b</code></span>
+                <span class="model-note">19 GB · MoE, punches above its weight</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">llama3.3:70b</span>
+                <span class="model-pull"><code>ollama pull llama3.3:70b</code></span>
+                <span class="model-note">43 GB (Q4) · best local quality</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-tier guide-tier-online">
+            <div class="tier-badge tier-online">Online ☁</div>
+            <div class="tier-spec">Any hardware · data sent to external servers</div>
+            <div class="tier-models">
+              <div class="tier-model">
+                <span class="model-name">gpt-4o-mini</span>
+                <span class="model-note">OpenAI · fast &amp; cheap · use <code>openai-compat</code> provider</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">claude-haiku-4-5</span>
+                <span class="model-note">Anthropic · low latency · use <code>anthropic</code> provider</span>
+              </div>
+              <div class="tier-model">
+                <span class="model-name">meta-llama/llama-3.1-8b-instruct:free</span>
+                <span class="model-note">OpenRouter · free tier available · use <code>openai-compat</code> provider</span>
+              </div>
+            </div>
+            <div class="guide-online-warning">
+              ⚠ Online providers may store your prompts per their data retention policies.
+              See <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">OpenAI</a>,
+              <a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener">Anthropic</a>,
+              <a href="https://openrouter.ai/privacy" target="_blank" rel="noopener">OpenRouter</a> privacy pages.
+            </div>
+          </div>
+        </div>
+
+        <details class="expander" style="margin-top:20px">
+          <summary>Not sure what tier you are? Quick check</summary>
+          <div style="padding:16px;color:var(--text-dim);font-size:13px;line-height:1.7">
+            <strong>RAM:</strong> Windows → Task Manager → Performance → Memory.
+            macOS → Apple menu → About This Mac → Memory.
+            Linux → <code>free -h</code><br>
+            <strong>GPU VRAM:</strong> Windows → Task Manager → Performance → GPU.
+            macOS → About This Mac → Graphics. Linux → <code>nvidia-smi</code> or <code>rocm-smi</code><br>
+            <strong>Rule of thumb:</strong> the model's file size must fit in VRAM for GPU inference,
+            or in RAM for CPU inference (leave ~2 GB headroom for the OS).
+          </div>
+        </details>
       </section>
     </main>
 

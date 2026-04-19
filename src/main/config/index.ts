@@ -33,7 +33,11 @@ function readEnv(): PartialConfig {
   const e = process.env;
   const partial: PartialConfig = {};
 
-  if (e.LLM_PROVIDER === 'ollama' || e.LLM_PROVIDER === 'openai-compat') {
+  if (
+    e.LLM_PROVIDER === 'ollama' ||
+    e.LLM_PROVIDER === 'openai-compat' ||
+    e.LLM_PROVIDER === 'anthropic'
+  ) {
     partial.provider = e.LLM_PROVIDER;
   }
   if (e.LLM_BASE_URL) partial.baseUrl = e.LLM_BASE_URL;
@@ -139,11 +143,21 @@ function resolveLayeredPath(
   return resolver(fallback, cwdBase);
 }
 
+/**
+ * Identifies which higher-precedence source (CLI flag or env var) is currently
+ * pinning a given resolved config field, making it impossible to change via the
+ * control panel.  Keys match `ResolvedConfig` field names.  When a field is
+ * absent from this map, the file (or default) is in effect and the panel can
+ * persist edits to it.
+ */
+export type ConfigOverrides = Partial<Record<keyof ResolvedConfig, 'cli' | 'env'>>;
+
 export interface LoadedConfig {
   resolved: ResolvedConfig;
   cli: CliResult;
   configFileExisted: boolean;
   configFileWritten: boolean;
+  overrides: ConfigOverrides;
 }
 
 export interface LoadConfigOptions {
@@ -307,7 +321,45 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     cli,
     configFileExisted: fileLoad.existed,
     configFileWritten: written,
+    overrides: computeOverrides(sources),
   };
+}
+
+/**
+ * For each resolved field, record whether its current value is being pinned by
+ * a CLI flag or environment variable.  Anything not in the returned map is
+ * coming from the JSON config file (or built-in defaults) and is therefore
+ * editable via the control panel.
+ */
+function computeOverrides(sources: MergeSources): ConfigOverrides {
+  const out: ConfigOverrides = {};
+  // List of editable scalar fields the panel exposes.  Order matters only for
+  // readability; the loop below is field-by-field and side-effect free.
+  const fields: (keyof ResolvedConfig)[] = [
+    'provider',
+    'baseUrl',
+    'model',
+    'apiKey',
+    'temperature',
+    'whisperCliPath',
+    'whisperModelPath',
+    'sampleRate',
+    'hotkeyCombo',
+    'toggleHotkeyCombo',
+    'clipboardRestoreDelayMs',
+    'systemPrompt',
+    'enabledSkills',
+    'controlPanelPort',
+    'logsDir',
+    'skillsDir',
+  ];
+  const cli = sources.cli as Record<string, unknown>;
+  const env = sources.env as Record<string, unknown>;
+  for (const key of fields) {
+    if (cli[key] !== undefined && cli[key] !== null) out[key] = 'cli';
+    else if (env[key] !== undefined && env[key] !== null) out[key] = 'env';
+  }
+  return out;
 }
 
 export function getProviderConfig(cfg: ResolvedConfig): ProviderConfig {

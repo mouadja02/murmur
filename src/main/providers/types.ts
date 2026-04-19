@@ -1,4 +1,4 @@
-export type ProviderId = 'ollama' | 'openai-compat';
+export type ProviderId = 'ollama' | 'openai-compat' | 'anthropic';
 
 export interface ProviderConfig {
   id: ProviderId;
