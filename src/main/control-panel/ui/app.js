@@ -65,9 +65,13 @@ function applyStateToDom() {
 
   renderSkillList();
   if (state.selectedSkillId) {
-    const found = state.skills.find((s) => s.id === state.selectedSkillId);
-    if (found) selectSkill(found.id, true);
-    else showSkillForm(null);
+    if (state.selectedSkillId === '__new__') {
+      // User is filling in a new skill — never clobber it on refresh.
+    } else {
+      const found = state.skills.find((s) => s.id === state.selectedSkillId);
+      if (found) selectSkill(found.id, true);
+      else showSkillForm(null);
+    }
   }
 }
 
@@ -550,6 +554,110 @@ function updateOnlineWarning(baseUrl) {
   }
 }
 
+// ── Skill import ──────────────────────────────────────────────
+
+/**
+ * Parse a Markdown skill file (YAML frontmatter + body).
+ * Returns id/name/description/content. Works with or without frontmatter.
+ */
+function parseSkillMarkdown(text) {
+  const match = text.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?([\s\S]*)$/);
+  if (!match) {
+    return { id: '', name: '', description: '', content: text.trim() };
+  }
+  const yaml = match[1];
+  const content = match[2].trim();
+  const get = (key) =>
+    (yaml.match(new RegExp(`^${key}:\\s*(.+)$`, 'm')) || [])[1]?.trim() ?? '';
+  return { id: get('id'), name: get('name'), description: get('description'), content };
+}
+
+function prefillNewSkillForm(parsed) {
+  showNewSkillForm();
+  if (parsed.name) $('#skill-name').value = parsed.name;
+  if (parsed.description) $('#skill-desc').value = parsed.description;
+  if (parsed.id) {
+    $('#skill-id').value = parsed.id;
+    $('#skill-id').readOnly = false; // let user adjust
+  }
+  if (parsed.content) $('#skill-content').value = parsed.content;
+  // Collapse the import panel
+  $('#skill-import-panel').classList.add('hidden');
+  // Focus the most useful field
+  (parsed.name ? $('#skill-content') : $('#skill-name')).focus();
+}
+
+function wireImportSkill() {
+  const btn = $('#btn-import-skill');
+  const panel = $('#skill-import-panel');
+
+  btn.addEventListener('click', () => panel.classList.toggle('hidden'));
+
+  // Import sub-tabs (File / URL)
+  for (const tab of $$('.import-tab')) {
+    tab.addEventListener('click', () => {
+      for (const t of $$('.import-tab')) t.classList.remove('active');
+      tab.classList.add('active');
+      for (const p of $$('.import-pane')) p.classList.add('hidden');
+      $(`#import-pane-${tab.dataset.itab}`).classList.remove('hidden');
+    });
+  }
+
+  // File import
+  const fileInput = $('#skill-file-input');
+  const fileLabel = $('#import-file-label');
+
+  fileLabel.addEventListener('click', () => fileInput.click());
+  fileLabel.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    fileLabel.classList.add('drag-over');
+  });
+  fileLabel.addEventListener('dragleave', () => fileLabel.classList.remove('drag-over'));
+  fileLabel.addEventListener('drop', (e) => {
+    e.preventDefault();
+    fileLabel.classList.remove('drag-over');
+    const file = e.dataTransfer?.files[0];
+    if (file) readSkillFile(file);
+  });
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) readSkillFile(file);
+    fileInput.value = '';
+  });
+
+  function readSkillFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => prefillNewSkillForm(parseSkillMarkdown(String(e.target.result)));
+    reader.onerror = () => toast('Could not read file', 'error');
+    reader.readAsText(file);
+  }
+
+  // URL import
+  const urlInput = $('#skill-url-input');
+  const fetchBtn = $('#btn-fetch-skill');
+
+  async function fetchSkillUrl() {
+    const url = urlInput.value.trim();
+    if (!url) { toast('Enter a URL first', 'error'); return; }
+    fetchBtn.textContent = 'Fetching\u2026';
+    fetchBtn.disabled = true;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      prefillNewSkillForm(parseSkillMarkdown(await res.text()));
+      urlInput.value = '';
+    } catch (err) {
+      toast(`Could not fetch: ${err.message}`, 'error');
+    } finally {
+      fetchBtn.textContent = 'Fetch';
+      fetchBtn.disabled = false;
+    }
+  }
+
+  fetchBtn.addEventListener('click', fetchSkillUrl);
+  urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchSkillUrl(); });
+}
+
 wireTabs();
 wireSystemPrompt();
 wireSkills();
@@ -559,11 +667,15 @@ wireHotkeys();
 wirePaths();
 wireSaveAll();
 wireOverlayControls();
+wireImportSkill();
 
 // Cross-tab navigation links inside panes
 document.getElementById('goto-provider')?.addEventListener('click', () => setTab('provider'));
 
 refresh();
 setInterval(() => {
+  // Don't overwrite fields while the user is actively typing in any input/textarea/select.
+  const active = document.activeElement;
+  if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
   refresh().catch(() => {});
 }, 4000);

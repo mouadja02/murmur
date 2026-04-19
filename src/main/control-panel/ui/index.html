@@ -92,7 +92,36 @@
           <aside class="skill-list">
             <div class="skill-list-header">
               <span id="skill-count" class="hint"></span>
-              <button type="button" id="btn-new-skill" class="btn btn-ghost">+ New skill</button>
+              <div class="skill-list-btns">
+                <button type="button" id="btn-import-skill" class="btn btn-ghost" title="Import from a .md file or URL">↑ Import</button>
+                <button type="button" id="btn-new-skill" class="btn btn-ghost">+ New skill</button>
+              </div>
+            </div>
+            <div id="skill-import-panel" class="skill-import-panel hidden">
+              <div class="import-tabs">
+                <button type="button" class="import-tab active" data-itab="file">From file</button>
+                <button type="button" class="import-tab" data-itab="url">From URL</button>
+              </div>
+              <div id="import-pane-file" class="import-pane">
+                <label id="import-file-label" class="import-file-label">
+                  Click or drag a <code>.md</code> skill file
+                </label>
+                <input id="skill-file-input" type="file" accept=".md,.txt" style="display:none" />
+              </div>
+              <div id="import-pane-url" class="import-pane hidden">
+                <div class="import-url-row">
+                  <input
+                    id="skill-url-input"
+                    type="text"
+                    placeholder="https://raw.githubusercontent.com/…/skill.md"
+                    autocomplete="off"
+                  />
+                  <button type="button" id="btn-fetch-skill" class="btn btn-ghost">Fetch</button>
+                </div>
+                <p class="hint" style="margin:4px 0 0">
+                  Works with any raw Markdown URL (GitHub raw, Gist, etc.)
+                </p>
+              </div>
             </div>
             <ul id="skill-list"></ul>
           </aside>
