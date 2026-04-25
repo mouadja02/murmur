@@ -9,6 +9,18 @@ export const MURMUR_PROTOCOL = 'murmur';
 
 export type MurmurAction = 'show' | 'hide' | 'toggle' | 'panel' | 'quit';
 
+export interface ProtocolRegistrationInput {
+  defaultApp: boolean;
+  execPath: string;
+  electronEntryPath: string;
+  argv: readonly unknown[];
+}
+
+export interface ProtocolRegistration {
+  executable: string;
+  args: string[];
+}
+
 const KNOWN_ACTIONS: ReadonlySet<MurmurAction> = new Set([
   'show',
   'hide',
@@ -40,4 +52,17 @@ export function findMurmurUrlInArgv(argv: readonly unknown[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Build arguments for Electron's protocol registration. Default-app Electron
+ * launches need the Murmur entry script as the first argument. Do not trust
+ * `argv[1]` here: when the handler is repaired from another Electron-hosted
+ * environment, it can point at that host app's install directory.
+ */
+export function buildProtocolRegistration(input: ProtocolRegistrationInput): ProtocolRegistration {
+  return {
+    executable: input.execPath,
+    args: input.defaultApp ? [input.electronEntryPath] : [],
+  };
 }

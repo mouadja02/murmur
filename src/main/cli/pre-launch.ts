@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -7,6 +8,7 @@ import { getUserDataDir, HELP_TEXT, loadConfig, updateConfigFile } from '../conf
 import { loadSkills } from '../skills.js';
 import { runAutoSetup } from './auto-setup.js';
 import { printBanner } from './banner.js';
+import { runLlmSetup } from './llm-setup.js';
 import { askMultilineSystemPrompt, askPreLaunchAction } from './prompt.js';
 import { printStatus } from './status.js';
 
@@ -43,6 +45,7 @@ async function main(): Promise<void> {
   }
 
   let cfg = loaded.resolved;
+  const configWasWritten = loaded.configFileWritten;
   printBanner(getVersion());
 
   const skills = loadSkills(cfg.skillsDir);
@@ -65,6 +68,23 @@ async function main(): Promise<void> {
     setupResult.changes.whisperModelPath !== undefined
   ) {
     // Re-load so resolved paths reflect the new on-disk config.
+    loaded = loadConfig({ userDataDir });
+    cfg = loaded.resolved;
+    const updatedSkills = loadSkills(cfg.skillsDir);
+    printStatus({ cfg, skills: updatedSkills, controlPanelUrl: panelUrl });
+  }
+
+  const llmSetupResult = await runLlmSetup({
+    cfg,
+    valueSources: loaded.valueSources,
+    configFileWritten: configWasWritten,
+  });
+  if (
+    llmSetupResult.changes.provider !== undefined ||
+    llmSetupResult.changes.baseUrl !== undefined ||
+    llmSetupResult.changes.model !== undefined ||
+    llmSetupResult.changes.apiKey !== undefined
+  ) {
     loaded = loadConfig({ userDataDir });
     cfg = loaded.resolved;
     const updatedSkills = loadSkills(cfg.skillsDir);

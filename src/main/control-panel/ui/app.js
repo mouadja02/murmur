@@ -683,11 +683,13 @@ function wireSaveAll() {
 const DEFAULT_PROMPT = `You refine a raw voice transcription into a high-quality prompt for an AI coding assistant.
 
 Rules:
-- Restructure as: Goal, then Context, then Constraints, then Output format.
+- Rewrite the transcription as one concise prompt that preserves exactly what the user asked for.
 - Remove filler words (um, like, you know, basically, actually, kind of, sort of).
 - Fix obvious dictation artifacts and homophones using coding context (e.g. "react" not "wreaked", "async" not "a sink").
-- Never invent requirements the user did not state. If something is ambiguous, keep it ambiguous.
-- Keep the user's voice. Do not make it corporate or verbose.
+- Do not invent requirements, context, constraints, examples, or output formats the user did not state.
+- Do not expand vague ideas into implementation plans. If something is ambiguous, keep it ambiguous.
+- Keep the user's voice and level of detail. Do not make it corporate or verbose.
+- Use bullets only when the user clearly dictated multiple distinct items.
 - Output ONLY the refined prompt. No preamble like "Here is the refined prompt:". No meta-commentary. No markdown code fences unless the refined prompt itself needs them.`;
 
 /**

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { findMurmurUrlInArgv, parseMurmurUrl } from '../dist/main/protocol/url.js';
+import {
+  buildProtocolRegistration,
+  findMurmurUrlInArgv,
+  parseMurmurUrl,
+} from '../dist/main/protocol/url.js';
 
 describe('parseMurmurUrl', () => {
   it('parses all known actions (hostname form)', () => {
@@ -50,5 +54,38 @@ describe('findMurmurUrlInArgv', () => {
   it('tolerates non-string entries (defensive against process.argv quirks)', () => {
     const argv = ['electron', 42, 'murmur://hide'];
     assert.equal(findMurmurUrlInArgv(argv), 'murmur://hide');
+  });
+});
+
+describe('buildProtocolRegistration', () => {
+  it('uses the known Murmur entry point for default Electron apps instead of argv[1]', () => {
+    const registration = buildProtocolRegistration({
+      defaultApp: true,
+      execPath: 'C:/Users/mouad/AppData/Local/Programs/cursor/Cursor.exe',
+      electronEntryPath: 'C:/repo/murmur/dist/main/index.js',
+      argv: [
+        'C:/Users/mouad/AppData/Local/Programs/cursor/Cursor.exe',
+        'C:/Users/mouad/AppData/Local/Programs/cursor',
+      ],
+    });
+
+    assert.deepEqual(registration, {
+      executable: 'C:/Users/mouad/AppData/Local/Programs/cursor/Cursor.exe',
+      args: ['C:/repo/murmur/dist/main/index.js'],
+    });
+  });
+
+  it('does not add an entry argument for packaged apps', () => {
+    const registration = buildProtocolRegistration({
+      defaultApp: false,
+      execPath: 'C:/Program Files/Murmur/Murmur.exe',
+      electronEntryPath: 'C:/Program Files/Murmur/resources/app/dist/main/index.js',
+      argv: ['C:/Program Files/Murmur/Murmur.exe'],
+    });
+
+    assert.deepEqual(registration, {
+      executable: 'C:/Program Files/Murmur/Murmur.exe',
+      args: [],
+    });
   });
 });

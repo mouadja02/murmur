@@ -19,7 +19,7 @@ export interface CliResult {
  * Supports both `--key value` and `--key=value`.
  *
  * Recognised flags:
- *   --provider <ollama|openai-compat>
+ *   --provider <ollama|openai-compat|anthropic>
  *   --base-url <url>
  *   --model <id>
  *   --api-key <key>
@@ -129,10 +129,11 @@ Usage:
   electron . [flags]
 
 LLM provider:
-  --provider <ollama|openai-compat>   Selects the LLM backend
+  --provider <ollama|openai-compat|anthropic>
+                                       Selects the LLM backend
   --base-url <url>                    Provider HTTP base URL
   --model <id>                        Model identifier on the provider
-  --api-key <key>                     Optional bearer token (openai-compat only)
+  --api-key <key>                     Optional bearer token (required for Anthropic)
   --temperature <float>               Sampling temperature (default 0.2)
 
 Local STT:
@@ -169,4 +170,6 @@ Provider quick reference:
     --provider openai-compat --base-url http://localhost:1234/v1 --model <loaded-model-id>
   llama.cpp server:
     --provider openai-compat --base-url http://localhost:8080/v1 --model <served-model>
+  Anthropic:
+    --provider anthropic --base-url https://api.anthropic.com/v1 --model claude-sonnet-4-5 --api-key <key>
 `.trim();

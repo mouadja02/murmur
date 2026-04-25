@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -63,5 +63,69 @@ describe('loadConfig — non-whisper paths still resolve against config dir', ()
     withConfig({}, (loaded) => {
       assert.equal(path.isAbsolute(loaded.resolved.logsDir), true);
     });
+  });
+});
+
+describe('loadConfig — first-run LLM env precedence', () => {
+  it('does not seed provider/baseUrl/model into a fresh config when env supplies them', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'murmur-cfg-'));
+    const oldProvider = process.env.LLM_PROVIDER;
+    const oldBaseUrl = process.env.LLM_BASE_URL;
+    const oldModel = process.env.LLM_MODEL;
+    try {
+      process.env.LLM_PROVIDER = 'openai-compat';
+      process.env.LLM_BASE_URL = 'http://localhost:1234/v1';
+      process.env.LLM_MODEL = 'local-model';
+
+      const loaded = loadConfig({ userDataDir: tmp, argv: ['node', 'test'] });
+
+      assert.equal(loaded.configFileWritten, true);
+      assert.equal(loaded.resolved.provider, 'openai-compat');
+      assert.equal(loaded.resolved.baseUrl, 'http://localhost:1234/v1');
+      assert.equal(loaded.resolved.model, 'local-model');
+      assert.equal(loaded.valueSources.provider, 'env');
+      assert.equal(loaded.valueSources.baseUrl, 'env');
+      assert.equal(loaded.valueSources.model, 'env');
+
+      const seeded = JSON.parse(readFileSync(path.join(tmp, 'config.json'), 'utf8'));
+      assert.equal('provider' in seeded, false);
+      assert.equal('baseUrl' in seeded, false);
+      assert.equal('model' in seeded, false);
+    } finally {
+      if (oldProvider === undefined) delete process.env.LLM_PROVIDER;
+      else process.env.LLM_PROVIDER = oldProvider;
+      if (oldBaseUrl === undefined) delete process.env.LLM_BASE_URL;
+      else process.env.LLM_BASE_URL = oldBaseUrl;
+      if (oldModel === undefined) delete process.env.LLM_MODEL;
+      else process.env.LLM_MODEL = oldModel;
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('marks first-run LLM values as built-in defaults when no env or file value exists', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'murmur-cfg-'));
+    const oldProvider = process.env.LLM_PROVIDER;
+    const oldBaseUrl = process.env.LLM_BASE_URL;
+    const oldModel = process.env.LLM_MODEL;
+    try {
+      delete process.env.LLM_PROVIDER;
+      delete process.env.LLM_BASE_URL;
+      delete process.env.LLM_MODEL;
+
+      const loaded = loadConfig({ userDataDir: tmp, argv: ['node', 'test'] });
+
+      assert.equal(loaded.resolved.provider, 'ollama');
+      assert.equal(loaded.valueSources.provider, 'default');
+      assert.equal(loaded.valueSources.baseUrl, 'default');
+      assert.equal(loaded.valueSources.model, 'default');
+    } finally {
+      if (oldProvider === undefined) delete process.env.LLM_PROVIDER;
+      else process.env.LLM_PROVIDER = oldProvider;
+      if (oldBaseUrl === undefined) delete process.env.LLM_BASE_URL;
+      else process.env.LLM_BASE_URL = oldBaseUrl;
+      if (oldModel === undefined) delete process.env.LLM_MODEL;
+      else process.env.LLM_MODEL = oldModel;
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
