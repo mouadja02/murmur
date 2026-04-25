@@ -1,9 +1,19 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { app, type BrowserWindow } from 'electron';
 import { hideOverlay, showOverlay, toggleOverlayVisibility } from '../overlay/window.js';
-import { findMurmurUrlInArgv, MURMUR_PROTOCOL, type MurmurAction, parseMurmurUrl } from './url.js';
+import {
+  buildProtocolRegistration,
+  findMurmurUrlInArgv,
+  MURMUR_PROTOCOL,
+  type MurmurAction,
+  parseMurmurUrl,
+} from './url.js';
 
 export type { MurmurAction };
 export { findMurmurUrlInArgv, MURMUR_PROTOCOL, parseMurmurUrl };
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface ProtocolHandlers {
   getWindow: () => BrowserWindow | null;
@@ -18,13 +28,17 @@ export interface ProtocolHandlers {
  * Info.plist registration does the same job and this call is a no-op.
  */
 export function registerProtocol(): void {
-  if (app.isDefaultProtocolClient(MURMUR_PROTOCOL)) return;
+  const registration = buildProtocolRegistration({
+    defaultApp: Boolean(process.defaultApp),
+    execPath: process.execPath,
+    electronEntryPath: path.resolve(__dirname, '../index.js'),
+    argv: process.argv,
+  });
 
-  // `process.execPath` is the Electron binary. For dev runs (`electron .`),
-  // Electron additionally needs the entry-script path in argv[1] so the OS
-  // can reconstruct `electron <entry> <url>` when invoking the handler.
-  const extraArgs = process.defaultApp && process.argv[1] ? [process.argv[1]] : [];
-  app.setAsDefaultProtocolClient(MURMUR_PROTOCOL, process.execPath, extraArgs);
+  // Always register instead of returning early. This repairs stale Windows
+  // handlers from older dev runs where the extra app argument pointed at a host
+  // Electron app (for example Cursor) instead of Murmur's entry script.
+  app.setAsDefaultProtocolClient(MURMUR_PROTOCOL, registration.executable, registration.args);
 }
 
 /** Run a parsed action against the running window / control panel. */

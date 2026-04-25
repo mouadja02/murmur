@@ -63,14 +63,23 @@ body {
   gap: 14px;
 }
 
-.brand-dot {
-  width: 14px;
-  height: 14px;
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #bba6ff, #7a58ff 70%);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.08), transparent 45%), #101018;
+  border: 1px solid var(--border);
   box-shadow:
     0 0 0 3px var(--accent-soft),
-    0 0 16px rgba(139, 108, 255, 0.5);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.brand-mark svg {
+  width: 20px;
+  height: 20px;
 }
 
 .brand-name {
@@ -731,7 +740,7 @@ code {
 }
 
 .hidden {
-  display: none !important;
+  display: none;
 }
 
 .toast {

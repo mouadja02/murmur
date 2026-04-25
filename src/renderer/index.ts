@@ -56,6 +56,8 @@ const STATE_LABELS: Record<StateName, string> = {
   error: 'Error',
 };
 
+let currentState: StateName = 'idle';
+
 function required<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`#${id} missing`);
@@ -71,11 +73,14 @@ const infoTooltip = required<HTMLDivElement>('info-tooltip');
 logoWrap.innerHTML = LOGO_SVG;
 
 const soundbar = createSoundbar(barsEl);
+let latestInfo: InfoView | null = null;
 
 function setState(state: StateName): void {
+  currentState = state;
   for (const s of STATES) overlay.classList.remove(`state-${s}`);
   overlay.classList.add(`state-${state}`);
   statusChip.textContent = STATE_LABELS[state];
+  if (latestInfo) renderInfoTooltip(latestInfo);
 
   if (state === 'recording') {
     overlay.classList.add('expanded');
@@ -87,6 +92,61 @@ function setState(state: StateName): void {
     overlay.classList.add('expanded');
     soundbar.stop();
   }
+}
+
+function div(className: string, text?: string): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function compactUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    const path = url.pathname === '/' ? '' : url.pathname;
+    return `${url.host}${path}`;
+  } catch {
+    return value;
+  }
+}
+
+function keyChip(text: string): HTMLSpanElement {
+  const el = document.createElement('span');
+  el.className = 'tooltip-key';
+  el.textContent = text;
+  return el;
+}
+
+function tooltipRow(label: string, value: string): HTMLDivElement {
+  const row = div('tooltip-row');
+  row.append(div('tooltip-label', label), div('tooltip-value', value));
+  return row;
+}
+
+function renderInfoTooltip(info: InfoView): void {
+  const head = div('tooltip-head');
+  const provider = div('tooltip-provider');
+  provider.append(div('tooltip-name', info.providerDisplayName), div('tooltip-model', info.model));
+  head.append(provider, div('tooltip-state', currentState));
+
+  const rows = div('tooltip-rows');
+  rows.append(
+    tooltipRow('URL', compactUrl(info.baseUrl)),
+    tooltipRow('Panel', compactUrl(info.controlPanelUrl)),
+  );
+
+  const hotkeys = div('tooltip-row');
+  hotkeys.append(div('tooltip-label', 'Keys'));
+  const keys = div('tooltip-keys');
+  keys.append(keyChip(`PTT ${info.hotkeyCombo}`), keyChip(`Hide ${info.toggleHotkeyCombo}`));
+  hotkeys.append(keys);
+  rows.append(hotkeys);
+
+  const foot = div('tooltip-foot');
+  foot.append(div('tooltip-dot'), div('tooltip-value', 'Drag to move. Right-click for menu.'));
+
+  infoTooltip.replaceChildren(head, rows, foot);
 }
 
 setState('idle');
@@ -116,13 +176,8 @@ window.murmur.onStopRecording(async () => {
 });
 
 window.murmur.onInfo((info) => {
-  infoTooltip.textContent =
-    `${info.providerDisplayName} \u00b7 ${info.model}\n` +
-    `${info.baseUrl}\n` +
-    `PTT ${info.hotkeyCombo}  \u00b7  Toggle ${info.toggleHotkeyCombo}\n` +
-    `Panel ${info.controlPanelUrl}\n` +
-    'Drag to move \u00b7 Right-click for menu';
-  infoTooltip.style.whiteSpace = 'pre';
+  latestInfo = info;
+  renderInfoTooltip(info);
 });
 
 window.murmur.requestInfo();

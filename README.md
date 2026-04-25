@@ -49,7 +49,19 @@ npx @mouadja02/murmur
 
 That pulls the published package from npm, runs the pre-launch banner, and spins up the overlay.
 
-**On the first run, Murmur detects your OS and walks you through setup interactively.** If `whisper-cli` and/or the model file are missing, it asks:
+**On the first run, Murmur detects your OS and walks you through setup interactively.** It first asks for your LLM connection:
+
+```
+── LLM setup ─────────────────────────────────────────────
+
+    ? LLM_PROVIDER (ollama | openai-compat | anthropic)
+    ? LLM_BASE_URL (suggested: http://localhost:11434)
+    ? LLM_MODEL (example: qwen3:4b)
+```
+
+If `LLM_PROVIDER`, `LLM_BASE_URL`, or `LLM_MODEL` already exist in your environment or `.env`, Murmur shows them as defaults. Press Enter to keep using the env value without writing over it in `config.json`. If no env value exists, Murmur requires an explicit answer so you do not accidentally launch against the wrong model.
+
+If `whisper-cli` and/or the model file are missing, it asks:
 
 ```
 ── First-time setup ────────────────────────────────────────
@@ -126,7 +138,7 @@ Four stages, strictly local:
 | --- | --- |
 | **Capture** | The overlay records 16 kHz mono PCM while you hold the hotkey (or between two clicks). |
 | **Transcribe** | `whisper.cpp` turns the WAV into text on your CPU. |
-| **Refine** | Your local LLM rewrites the transcription into a structured prompt using your active system prompt + enabled skills. |
+| **Refine** | Your local LLM rewrites the transcription into a concise prompt using your active system prompt + enabled skills. |
 | **Inject** | Murmur copies the refined text, fires `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) at your current cursor, then restores whatever was on your clipboard before. |
 
 Every session gets a timestamped folder under `logs/` with the WAV, the raw transcription, the exact prompt sent to the LLM, and the refined output — so you can debug anything after the fact.
@@ -365,6 +377,8 @@ Auto-created on first run, under the OS user-data dir:
 - macOS: `~/Library/Application Support/murmur/config.json`
 - Linux: `~/.config/murmur/config.json` (respects `$XDG_CONFIG_HOME`)
 
+LLM fields are optional. If you keep env-backed LLM values during first-run setup, `provider`, `baseUrl`, `model`, and `apiKey` may be absent from the file so the env vars remain in control.
+
 ```json
 {
   "provider": "ollama",
@@ -399,7 +413,7 @@ Any field can be omitted; missing fields fall through to defaults. `overlay.posi
 <details>
 <summary><strong>Environment variables</strong></summary>
 
-Environment variables have lower precedence than CLI flags but higher than the config file. They are useful for `.env`-based development workflows and Docker/systemd deployments.
+Environment variables have lower precedence than CLI flags and the config file. They are useful for `.env`-based development workflows and Docker/systemd deployments. On first run, Murmur does not seed built-in LLM defaults into `config.json`, so `LLM_PROVIDER`, `LLM_BASE_URL`, and `LLM_MODEL` can supply the initial connection unless you choose to persist different values during setup.
 
 | Variable | Maps to |
 | --- | --- |
@@ -418,7 +432,7 @@ Environment variables have lower precedence than CLI flags but higher than the c
 | `MURMUR_ENABLED_SKILLS` | `enabledSkills` (comma-separated) |
 | `MURMUR_CONTROL_PANEL_PORT` | `controlPanelPort` |
 
-Create a `.env` file in the project root to set them for `pnpm dev`. Any field set this way will appear **locked** in the control panel with an env-var badge (e.g. `Locked by LLM_MODEL env var`). Remove or comment out the line and restart to unlock it.
+Create a `.env` file in the project root to set them for `pnpm dev`. Any field set this way will appear **locked** in the control panel with an env-var badge (e.g. `Locked by LLM_MODEL env var`) unless the same field is set in `config.json` or by a CLI flag. Remove or comment out the line and restart to unlock it.
 
 </details>
 

@@ -1,16 +1,24 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrowserWindow, screen } from 'electron';
 import type { OverlayAnchor, OverlayPosition, ResolvedConfig } from '../config/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = path.resolve(__dirname, '../../..');
 
 export const OVERLAY_WIDTH = 320;
-// Extra vertical room above the pill so the hover tooltip (which sits
-// `bottom: 100%` of the pill) renders fully inside the window bounds.
-export const OVERLAY_HEIGHT = 180;
+// Extra vertical room above the pill so the hover tooltip renders fully inside
+// the transparent window bounds.
+export const OVERLAY_HEIGHT = 240;
+
+function resolveAppIcon(): string | undefined {
+  const iconPath = path.join(PACKAGE_ROOT, 'logo.svg');
+  return existsSync(iconPath) ? iconPath : undefined;
+}
 
 export function createOverlayWindow(cfg: ResolvedConfig): BrowserWindow {
+  const icon = resolveAppIcon();
   const win = new BrowserWindow({
     width: OVERLAY_WIDTH,
     height: OVERLAY_HEIGHT,
@@ -27,6 +35,7 @@ export function createOverlayWindow(cfg: ResolvedConfig): BrowserWindow {
     focusable: true,
     show: false,
     title: 'murmur',
+    ...(icon ? { icon } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload.js'),
       contextIsolation: true,

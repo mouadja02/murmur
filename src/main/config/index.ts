@@ -151,6 +151,8 @@ function resolveLayeredPath(
  * persist edits to it.
  */
 export type ConfigOverrides = Partial<Record<keyof ResolvedConfig, 'cli' | 'env'>>;
+export type ConfigValueSource = 'cli' | 'file' | 'env' | 'default';
+export type ConfigValueSources = Partial<Record<keyof ResolvedConfig, ConfigValueSource>>;
 
 export interface LoadedConfig {
   resolved: ResolvedConfig;
@@ -158,6 +160,7 @@ export interface LoadedConfig {
   configFileExisted: boolean;
   configFileWritten: boolean;
   overrides: ConfigOverrides;
+  valueSources: ConfigValueSources;
 }
 
 export interface LoadConfigOptions {
@@ -177,6 +180,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
   const configFilePath = path.resolve(
     cli.configFilePath ?? path.join(opts.userDataDir, 'config.json'),
   );
+  const env = readEnv();
 
   let fileLoad = readConfigFile(configFilePath);
   let written = false;
@@ -192,7 +196,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     const cwdBase = process.cwd();
     const userDataDir = path.dirname(configFilePath);
     const IS_WINDOWS = process.platform === 'win32';
-    const seedDefaults = {
+    const seedDefaults: Record<string, unknown> = {
       ...DEFAULT_CONFIG,
       whisperCliPath: IS_WINDOWS
         ? path.resolve(cwdBase, DEFAULT_CONFIG.whisperCliPath)
@@ -203,6 +207,13 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       logsDir: path.resolve(cwdBase, DEFAULT_CONFIG.logsDir),
       skillsDir: path.resolve(userDataDir, 'skills'),
     };
+    // Do not persist built-in LLM defaults into a fresh config. Leaving these
+    // fields absent lets env vars keep working and lets first-run setup know the
+    // user has not explicitly chosen provider settings yet.
+    delete seedDefaults.provider;
+    delete seedDefaults.baseUrl;
+    delete seedDefaults.model;
+    delete seedDefaults.apiKey;
     written = writeDefaultConfigIfMissing(configFilePath, seedDefaults);
     if (written) fileLoad = readConfigFile(configFilePath);
   } else if (process.platform !== 'win32' && fileLoad.partial.whisperCliPath) {
@@ -233,8 +244,6 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       };
     }
   }
-
-  const env = readEnv();
 
   const sources: MergeSources = {
     cli: cli.partial,
@@ -322,7 +331,44 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     configFileExisted: fileLoad.existed,
     configFileWritten: written,
     overrides: computeOverrides(sources),
+    valueSources: computeValueSources(sources),
   };
+}
+
+function sourceOf(sources: MergeSources, key: keyof PartialConfig): ConfigValueSource {
+  const cli = sources.cli as Record<string, unknown>;
+  const file = sources.file as Record<string, unknown>;
+  const env = sources.env as Record<string, unknown>;
+  if (cli[key] !== undefined && cli[key] !== null) return 'cli';
+  if (file[key] !== undefined && file[key] !== null) return 'file';
+  if (env[key] !== undefined && env[key] !== null) return 'env';
+  return 'default';
+}
+
+function computeValueSources(sources: MergeSources): ConfigValueSources {
+  const out: ConfigValueSources = {};
+  const fields: (keyof PartialConfig)[] = [
+    'provider',
+    'baseUrl',
+    'model',
+    'apiKey',
+    'temperature',
+    'whisperCliPath',
+    'whisperModelPath',
+    'sampleRate',
+    'hotkeyCombo',
+    'toggleHotkeyCombo',
+    'clipboardRestoreDelayMs',
+    'systemPrompt',
+    'enabledSkills',
+    'controlPanelPort',
+    'logsDir',
+    'skillsDir',
+  ];
+  for (const key of fields) {
+    out[key as keyof ResolvedConfig] = sourceOf(sources, key);
+  }
+  return out;
 }
 
 /**
