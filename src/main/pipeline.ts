@@ -203,7 +203,10 @@ export class Pipeline {
 
       this.setStatus('injecting');
       const iStart = Date.now();
-      await pasteAtCursor(refined, { clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs });
+      await pasteAtCursor(refined, {
+        clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
+        injectionMethod: cfg.injectionMethod,
+      });
       timings.injectMs = Date.now() - iStart;
       timings.totalMs = Date.now() - pipelineStart;
       session.writeTimings(timings);
