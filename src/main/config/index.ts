@@ -10,7 +10,13 @@ import type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } fr
 export { HELP_TEXT } from './cli.js';
 export { DEFAULT_CONFIG, DEFAULT_SYSTEM_PROMPT } from './defaults.js';
 export { updateConfigFile } from './file.js';
-export type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
+export type {
+  InjectionMethod,
+  OverlayAnchor,
+  OverlayPosition,
+  PartialConfig,
+  ResolvedConfig,
+} from './schema.js';
 
 /**
  * Mirrors Electron's `app.getPath('userData')` for the "murmur" app name so
@@ -281,6 +287,18 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       sources.file.clipboardRestoreDelayMs,
       sources.env.clipboardRestoreDelayMs,
     ) ?? DEFAULT_CONFIG.clipboardRestoreDelayMs;
+  const injectionMethod =
+    pickFirst(
+      sources.cli.injectionMethod,
+      sources.file.injectionMethod,
+      sources.env.injectionMethod,
+    ) ?? DEFAULT_CONFIG.injectionMethod;
+  const queueMaxDepth =
+    pickFirst(sources.cli.queueMaxDepth, sources.file.queueMaxDepth, sources.env.queueMaxDepth) ??
+    DEFAULT_CONFIG.queueMaxDepth;
+  const prewarm =
+    pickFirst(sources.cli.prewarm, sources.file.prewarm, sources.env.prewarm) ??
+    DEFAULT_CONFIG.prewarm;
 
   const overlay = mergeOverlay(sources);
 
@@ -313,6 +331,9 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     hotkeyCombo,
     toggleHotkeyCombo,
     clipboardRestoreDelayMs,
+    injectionMethod,
+    queueMaxDepth,
+    prewarm,
     overlayAnchor: overlay.anchor,
     overlayOffsetX: overlay.offsetX,
     overlayOffsetY: overlay.offsetY,

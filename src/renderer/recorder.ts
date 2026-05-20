@@ -1,11 +1,12 @@
-const TARGET_SAMPLE_RATE = 16000;
-const BUFFER_SIZE = 4096;
-const ANALYSER_FFT_SIZE = 256; // -> 128 frequency bins
+// src/renderer/recorder.ts
+import { downsample, floatsToInt16PCM, TARGET_SAMPLE_RATE } from '../shared/pcm.js';
+
+const ANALYSER_FFT_SIZE = 256;
 
 interface CaptureState {
   stream: MediaStream;
   audioContext: AudioContext;
-  processor: ScriptProcessorNode;
+  workletNode: AudioWorkletNode;
   mute: GainNode;
   analyser: AnalyserNode;
   freqBuffer: Uint8Array<ArrayBuffer>;
@@ -14,30 +15,6 @@ interface CaptureState {
 }
 
 let state: CaptureState | null = null;
-
-function floatsToInt16PCM(chunks: Float32Array[]): Int16Array {
-  const total = chunks.reduce((n, c) => n + c.length, 0);
-  const out = new Int16Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    for (let i = 0; i < c.length; i++) {
-      const v = Math.max(-1, Math.min(1, c[i] ?? 0));
-      out[offset++] = v < 0 ? v * 0x8000 : v * 0x7fff;
-    }
-  }
-  return out;
-}
-
-function downsample(input: Int16Array, fromRate: number, toRate: number): Int16Array {
-  if (fromRate === toRate) return input;
-  const ratio = fromRate / toRate;
-  const outLength = Math.floor(input.length / ratio);
-  const out = new Int16Array(outLength);
-  for (let i = 0; i < outLength; i++) {
-    out[i] = input[Math.floor(i * ratio)] ?? 0;
-  }
-  return out;
-}
 
 export async function startCapture(): Promise<void> {
   if (state) return;
@@ -58,8 +35,12 @@ export async function startCapture(): Promise<void> {
     audioContext = new AudioContext();
   }
 
+  // Load the worklet module relative to this script's URL.
+  const workletUrl = new URL('./recorder-worklet.js', import.meta.url);
+  await audioContext.audioWorklet.addModule(workletUrl.href);
+
   const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+  const workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
   const mute = audioContext.createGain();
   mute.gain.value = 0;
   const analyser = audioContext.createAnalyser();
@@ -67,19 +48,19 @@ export async function startCapture(): Promise<void> {
   analyser.smoothingTimeConstant = 0.6;
 
   const chunks: Float32Array[] = [];
-  processor.onaudioprocess = (e) => {
-    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
+    chunks.push(new Float32Array(e.data));
   };
 
   source.connect(analyser);
-  source.connect(processor);
-  processor.connect(mute);
+  source.connect(workletNode);
+  workletNode.connect(mute);
   mute.connect(audioContext.destination);
 
   state = {
     stream,
     audioContext,
-    processor,
+    workletNode,
     mute,
     analyser,
     freqBuffer: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)),
@@ -93,7 +74,8 @@ export async function stopCapture(): Promise<ArrayBuffer> {
   const captured = state;
   state = null;
 
-  captured.processor.disconnect();
+  captured.workletNode.port.onmessage = null;
+  captured.workletNode.disconnect();
   captured.mute.disconnect();
   captured.analyser.disconnect();
   try {

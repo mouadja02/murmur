@@ -8,8 +8,10 @@ import {
   IPC_HIDE_OVERLAY,
   IPC_INFO,
   IPC_OPEN_CONTROL_PANEL,
+  IPC_OPEN_LOG_DIR,
   IPC_QUIT,
   IPC_REQUEST_INFO,
+  IPC_RETRY,
   IPC_SET_MOUSE_INTERACTIVE,
   IPC_SHOW_CONTEXT_MENU,
   IPC_TOGGLE_RECORDING,
@@ -41,6 +43,7 @@ import {
   wireProtocolEvents,
 } from './protocol/index.js';
 import { createProvider, type LlmProvider, PROVIDER_PRESETS } from './providers/index.js';
+import { type TrayIconState, TrayService } from './tray.js';
 import { beginWindowDrag, endWindowDrag } from './window-drag.js';
 
 let mainWindow: BrowserWindow | null = null;
@@ -49,6 +52,7 @@ let pipeline: Pipeline | null = null;
 let provider: LlmProvider | null = null;
 let controlPanel: ServerHandle | null = null;
 const hotkey = new HotkeyService();
+const tray = new TrayService();
 
 const POSITION_SAVE_DEBOUNCE_MS = 350;
 
@@ -252,6 +256,18 @@ function wireIPC(): void {
   ipcMain.on(IPC_QUIT, () => {
     app.quit();
   });
+
+  ipcMain.on(IPC_RETRY, () => {
+    pipeline?.retry().catch((err) => {
+      console.error('[main] retry failed:', err);
+    });
+  });
+
+  ipcMain.on(IPC_OPEN_LOG_DIR, (_evt, dir: string) => {
+    shell.openPath(dir).catch((err) => {
+      console.error('[main] openPath failed:', err);
+    });
+  });
 }
 
 function wireHotkey(): void {
@@ -293,6 +309,13 @@ function reloadConfigAfterExternalUpdate(): void {
       cfg: loaded.resolved,
       provider,
       getWindow: () => mainWindow,
+      onStatus: (s) => {
+        let iconState: TrayIconState = 'idle';
+        if (s === 'recording') iconState = 'recording';
+        else if (s === 'transcribing' || s === 'refining' || s === 'injecting')
+          iconState = 'processing';
+        tray.setState(iconState);
+      },
     });
   }
   rebindHotkeys();
@@ -390,11 +413,38 @@ async function bootstrap(): Promise<void> {
   }
   console.log('[murmur] preflight ok');
 
+  if (loaded.resolved.prewarm && provider.prewarm) {
+    const prewarmFn = provider.prewarm.bind(provider);
+    prewarmFn()
+      .then((ms) => console.log(`[murmur] prewarm: ${ms}ms`))
+      .catch((err) => console.warn('[murmur] prewarm failed (non-fatal):', err));
+  }
+
   mainWindow = createOverlayWindow(loaded.resolved);
+  tray.create({
+    onShow: () => {
+      if (mainWindow) showOverlay(mainWindow);
+      tray.setVisibility(true);
+    },
+    onHide: () => {
+      if (mainWindow) hideOverlay(mainWindow);
+      tray.setVisibility(false);
+    },
+    onPanel: openControlPanelExternal,
+    onQuit: () => app.quit(),
+    isVisible: () => mainWindow?.isVisible() ?? false,
+  });
   pipeline = new Pipeline({
     cfg: loaded.resolved,
     provider,
     getWindow: () => mainWindow,
+    onStatus: (s) => {
+      let iconState: TrayIconState = 'idle';
+      if (s === 'recording') iconState = 'recording';
+      else if (s === 'transcribing' || s === 'refining' || s === 'injecting')
+        iconState = 'processing';
+      tray.setState(iconState);
+    },
   });
 
   setupPositionPersistence(mainWindow);
@@ -436,6 +486,7 @@ if (app.hasSingleInstanceLock()) {
 
 app.on('before-quit', () => {
   hotkey.shutdown();
+  tray.destroy();
   controlPanel?.stop().catch(() => undefined);
 });
 

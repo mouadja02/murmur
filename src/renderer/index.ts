@@ -19,6 +19,10 @@ declare global {
       endWindowDrag: () => void;
       openControlPanel: () => void;
       quit: () => void;
+      onQueueDepth: (cb: (depth: number) => void) => void;
+      onError: (cb: (payload: { message: string; sessionDir: string }) => void) => void;
+      retry: () => void;
+      openLogDir: (dir: string) => void;
     };
   }
 }
@@ -42,6 +46,7 @@ const STATES = [
   'injecting',
   'done',
   'error',
+  'queue-full',
 ] as const;
 
 type StateName = (typeof STATES)[number];
@@ -54,6 +59,7 @@ const STATE_LABELS: Record<StateName, string> = {
   injecting: 'Pasting\u2026',
   done: 'Done',
   error: 'Error',
+  'queue-full': 'Queue full',
 };
 
 let currentState: StateName = 'idle';
@@ -69,6 +75,12 @@ const logoWrap = required<HTMLSpanElement>('logo-wrap');
 const barsEl = required<HTMLDivElement>('bars');
 const statusChip = required<HTMLDivElement>('status-chip');
 const infoTooltip = required<HTMLDivElement>('info-tooltip');
+const queueBadge = required<HTMLDivElement>('queue-badge');
+const errorToast = required<HTMLDivElement>('error-toast');
+const errorMsgEl = required<HTMLSpanElement>('error-message');
+const retryBtn = required<HTMLButtonElement>('retry-btn');
+const logBtn = required<HTMLButtonElement>('log-btn');
+const dismissBtn = required<HTMLButtonElement>('dismiss-btn');
 
 logoWrap.innerHTML = LOGO_SVG;
 
@@ -155,6 +167,7 @@ window.murmur.onStatus((s) => {
   if ((STATES as readonly string[]).includes(s)) {
     setState(s as StateName);
   }
+  if (s === 'done') dismissErrorToast();
 });
 
 window.murmur.onStartRecording(async () => {
@@ -181,6 +194,39 @@ window.murmur.onInfo((info) => {
 });
 
 window.murmur.requestInfo();
+
+let lastErrorSessionDir: string | null = null;
+
+function dismissErrorToast(): void {
+  errorToast.classList.remove('visible');
+  lastErrorSessionDir = null;
+}
+
+window.murmur.onQueueDepth((depth) => {
+  if (depth > 0) {
+    queueBadge.textContent = String(depth);
+    queueBadge.classList.add('visible');
+  } else {
+    queueBadge.classList.remove('visible');
+  }
+});
+
+window.murmur.onError((payload) => {
+  lastErrorSessionDir = payload.sessionDir;
+  errorMsgEl.textContent = payload.message;
+  errorToast.classList.add('visible');
+});
+
+retryBtn.addEventListener('click', () => {
+  dismissErrorToast();
+  window.murmur.retry();
+});
+
+logBtn.addEventListener('click', () => {
+  if (lastErrorSessionDir) window.murmur.openLogDir(lastErrorSessionDir);
+});
+
+dismissBtn.addEventListener('click', dismissErrorToast);
 
 // Toggle window-level mouse passthrough so transparent areas don't eat clicks.
 overlay.addEventListener('mouseenter', () => {

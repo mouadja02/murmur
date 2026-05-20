@@ -43,6 +43,26 @@ export class OllamaProvider implements LlmProvider {
     return { text: stripThink(data.response), durationMs: Date.now() - started };
   }
 
+  async prewarm(): Promise<number> {
+    const started = Date.now();
+    try {
+      await fetch(`${this.config.baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.config.model,
+          prompt: '',
+          keep_alive: '5m',
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return Date.now() - started;
+  }
+
   async preflight(): Promise<string | null> {
     // Warn early if the base URL looks like an OpenAI-compat server (e.g. LM
     // Studio on :1234) rather than a real Ollama instance.  Ollama's default
