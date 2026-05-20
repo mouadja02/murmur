@@ -17,8 +17,8 @@ export const IPC_OPEN_CONTROL_PANEL = 'murmur:open-control-panel';
 export const IPC_QUIT = 'murmur:quit';
 
 // main → renderer
-export const IPC_QUEUE_DEPTH = 'murmur:queue-depth';  // payload: number
-export const IPC_ERROR = 'murmur:error';               // payload: ErrorPayload
+export const IPC_QUEUE_DEPTH = 'murmur:queue-depth'; // payload: number
+export const IPC_ERROR = 'murmur:error'; // payload: ErrorPayload
 // renderer → main
 export const IPC_RETRY = 'murmur:retry';
 export const IPC_OPEN_LOG_DIR = 'murmur:open-log-dir'; // payload: string

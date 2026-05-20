@@ -5,7 +5,11 @@
 // not in the standard lib.dom types — declare them here to satisfy tsc.
 declare class AudioWorkletProcessor {
   readonly port: MessagePort;
-  process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean;
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>,
+  ): boolean;
 }
 declare function registerProcessor(name: string, processor: typeof AudioWorkletProcessor): void;
 

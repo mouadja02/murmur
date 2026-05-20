@@ -1,7 +1,7 @@
 // src/main/tray.ts
 import { deflateSync } from 'node:zlib';
-import { Menu, nativeImage, Tray } from 'electron';
 import type { NativeImage } from 'electron';
+import { Menu, nativeImage, Tray } from 'electron';
 
 function crc32(buf: Buffer): number {
   const table: number[] = [];
@@ -37,15 +37,18 @@ function makeCirclePng(size: number, r: number, g: number, b: number): Buffer {
       const cy = y - half + 0.5;
       const alpha = Math.sqrt(cx * cx + cy * cy) < half - 0.5 ? 255 : 0;
       const o = 1 + x * 4;
-      row[o] = r; row[o + 1] = g; row[o + 2] = b; row[o + 3] = alpha;
+      row[o] = r;
+      row[o + 1] = g;
+      row[o + 2] = b;
+      row[o + 3] = alpha;
     }
     rows.push(row);
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
   ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8;  // bit depth
-  ihdr[9] = 6;  // RGBA color type
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // RGBA color type
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), // PNG signature
     pngChunk('IHDR', ihdr),
@@ -62,7 +65,7 @@ function makeTrayIcon(r: number, g: number, b: number): NativeImage {
 
 // Colors mirror the overlay CSS variables.
 // Compute once at module load — avoids PNG synthesis + deflate on every setState call.
-const ICON_IDLE = makeTrayIcon(167, 139, 250);      // --accent purple
+const ICON_IDLE = makeTrayIcon(167, 139, 250); // --accent purple
 const ICON_RECORDING = makeTrayIcon(248, 113, 113); // --recording red
 const ICON_PROCESSING = makeTrayIcon(251, 191, 36); // --processing yellow
 

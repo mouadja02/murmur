@@ -1,7 +1,7 @@
 // tests/pcm.test.mjs
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { floatsToInt16PCM, downsample } from '../dist/shared/pcm.js';
+import { downsample, floatsToInt16PCM } from '../dist/shared/pcm.js';
 
 describe('floatsToInt16PCM', () => {
   it('converts +1.0 to max positive int16', () => {

@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 const BASE_CONFIG = {
-  displayName: 'Test', baseUrl: '', model: 'test-model', apiKey: null, temperature: 0.2,
+  displayName: 'Test',
+  baseUrl: '',
+  model: 'test-model',
+  apiKey: null,
+  temperature: 0.2,
 };
 
 describe('OllamaProvider.prewarm', () => {
@@ -15,7 +19,11 @@ describe('OllamaProvider.prewarm', () => {
       calls.push({ url: String(url), body: JSON.parse(opts?.body ?? '{}') });
       return { ok: true, json: async () => ({ response: '', done: true }) };
     };
-    const p = new OllamaProvider({ ...BASE_CONFIG, id: 'ollama', baseUrl: 'http://localhost:11434' });
+    const p = new OllamaProvider({
+      ...BASE_CONFIG,
+      id: 'ollama',
+      baseUrl: 'http://localhost:11434',
+    });
     const ms = await p.prewarm();
     globalThis.fetch = origFetch;
 
@@ -40,7 +48,9 @@ describe('OpenAiCompatProvider.prewarm', () => {
       };
     };
     const p = new OpenAiCompatProvider({
-      ...BASE_CONFIG, id: 'openai-compat', baseUrl: 'http://localhost:1234/v1',
+      ...BASE_CONFIG,
+      id: 'openai-compat',
+      baseUrl: 'http://localhost:1234/v1',
     });
     const ms = await p.prewarm();
     globalThis.fetch = origFetch;
@@ -64,7 +74,10 @@ describe('AnthropicProvider.prewarm', () => {
       };
     };
     const p = new AnthropicProvider({
-      ...BASE_CONFIG, id: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', apiKey: 'key',
+      ...BASE_CONFIG,
+      id: 'anthropic',
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'key',
     });
     const ms = await p.prewarm();
     globalThis.fetch = origFetch;

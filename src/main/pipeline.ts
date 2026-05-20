@@ -2,12 +2,12 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import {
+  type ErrorPayload,
   IPC_ERROR,
   IPC_QUEUE_DEPTH,
   IPC_START_RECORDING,
   IPC_STATUS,
   IPC_STOP_RECORDING,
-  type ErrorPayload,
   type Status,
 } from '../shared/ipc.js';
 import type { ResolvedConfig } from './config/index.js';
@@ -88,8 +88,8 @@ export class Pipeline {
   }
 
   private processNextQueued(): void {
-    if (this.audioQueue.length === 0) return;
-    const next = this.audioQueue.shift()!;
+    const next = this.audioQueue.shift();
+    if (!next) return;
     this.sendQueueDepth();
     this.processBuffer(next.session, next.buffer).catch((err) => {
       console.error('[pipeline] queued item crashed:', err);

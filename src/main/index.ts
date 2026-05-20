@@ -35,7 +35,6 @@ import {
   toggleOverlayVisibility,
 } from './overlay/window.js';
 import { Pipeline } from './pipeline.js';
-import { TrayService, type TrayIconState } from './tray.js';
 import { runPreflight } from './preflight.js';
 import {
   findMurmurUrlInArgv,
@@ -44,6 +43,7 @@ import {
   wireProtocolEvents,
 } from './protocol/index.js';
 import { createProvider, type LlmProvider, PROVIDER_PRESETS } from './providers/index.js';
+import { type TrayIconState, TrayService } from './tray.js';
 import { beginWindowDrag, endWindowDrag } from './window-drag.js';
 
 let mainWindow: BrowserWindow | null = null;
@@ -312,7 +312,8 @@ function reloadConfigAfterExternalUpdate(): void {
       onStatus: (s) => {
         let iconState: TrayIconState = 'idle';
         if (s === 'recording') iconState = 'recording';
-        else if (s === 'transcribing' || s === 'refining' || s === 'injecting') iconState = 'processing';
+        else if (s === 'transcribing' || s === 'refining' || s === 'injecting')
+          iconState = 'processing';
         tray.setState(iconState);
       },
     });
@@ -440,7 +441,8 @@ async function bootstrap(): Promise<void> {
     onStatus: (s) => {
       let iconState: TrayIconState = 'idle';
       if (s === 'recording') iconState = 'recording';
-      else if (s === 'transcribing' || s === 'refining' || s === 'injecting') iconState = 'processing';
+      else if (s === 'transcribing' || s === 'refining' || s === 'injecting')
+        iconState = 'processing';
       tray.setState(iconState);
     },
   });
