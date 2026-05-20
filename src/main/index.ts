@@ -8,8 +8,10 @@ import {
   IPC_HIDE_OVERLAY,
   IPC_INFO,
   IPC_OPEN_CONTROL_PANEL,
+  IPC_OPEN_LOG_DIR,
   IPC_QUIT,
   IPC_REQUEST_INFO,
+  IPC_RETRY,
   IPC_SET_MOUSE_INTERACTIVE,
   IPC_SHOW_CONTEXT_MENU,
   IPC_TOGGLE_RECORDING,
@@ -251,6 +253,18 @@ function wireIPC(): void {
 
   ipcMain.on(IPC_QUIT, () => {
     app.quit();
+  });
+
+  ipcMain.on(IPC_RETRY, () => {
+    pipeline?.retry().catch((err) => {
+      console.error('[main] retry failed:', err);
+    });
+  });
+
+  ipcMain.on(IPC_OPEN_LOG_DIR, (_evt, dir: string) => {
+    shell.openPath(dir).catch((err) => {
+      console.error('[main] openPath failed:', err);
+    });
   });
 }
 

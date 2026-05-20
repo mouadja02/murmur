@@ -1,14 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
+  type ErrorPayload,
   type InfoPayload,
   IPC_AUDIO_CHUNK,
   IPC_BEGIN_WINDOW_DRAG,
   IPC_END_WINDOW_DRAG,
+  IPC_ERROR,
   IPC_HIDE_OVERLAY,
   IPC_INFO,
   IPC_OPEN_CONTROL_PANEL,
+  IPC_OPEN_LOG_DIR,
   IPC_QUIT,
+  IPC_QUEUE_DEPTH,
   IPC_REQUEST_INFO,
+  IPC_RETRY,
   IPC_SET_MOUSE_INTERACTIVE,
   IPC_SHOW_CONTEXT_MENU,
   IPC_START_RECORDING,
@@ -60,5 +65,17 @@ contextBridge.exposeInMainWorld('murmur', {
   },
   quit: () => {
     ipcRenderer.send(IPC_QUIT);
+  },
+  onQueueDepth: (cb: (depth: number) => void) => {
+    ipcRenderer.on(IPC_QUEUE_DEPTH, (_evt, depth: number) => cb(depth));
+  },
+  onError: (cb: (payload: ErrorPayload) => void) => {
+    ipcRenderer.on(IPC_ERROR, (_evt, payload: ErrorPayload) => cb(payload));
+  },
+  retry: () => {
+    ipcRenderer.send(IPC_RETRY);
+  },
+  openLogDir: (dir: string) => {
+    ipcRenderer.send(IPC_OPEN_LOG_DIR, dir);
   },
 });
