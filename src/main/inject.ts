@@ -34,14 +34,16 @@ async function pasteViaClipboard(text: string, restoreDelayMs: number): Promise<
     throw new Error('clipboard write verification failed');
   }
 
-  if (process.platform === 'darwin') {
-    await keyboard.type(Key.LeftSuper, Key.V);
-  } else {
-    await keyboard.type(Key.LeftControl, Key.V);
+  try {
+    if (process.platform === 'darwin') {
+      await keyboard.type(Key.LeftSuper, Key.V);
+    } else {
+      await keyboard.type(Key.LeftControl, Key.V);
+    }
+    await sleep(restoreDelayMs);
+  } finally {
+    clipboard.writeText(previous);
   }
-
-  await sleep(restoreDelayMs);
-  clipboard.writeText(previous);
 }
 
 export async function pasteAtCursor(text: string, opts: InjectOptions): Promise<void> {
