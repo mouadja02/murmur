@@ -43,6 +43,9 @@ export const DEFAULT_CONFIG: Required<Omit<PartialConfig, 'apiKey' | 'overlay'>>
   hotkeyCombo: 'Ctrl+Shift+Space',
   toggleHotkeyCombo: 'Ctrl+Shift+H',
   clipboardRestoreDelayMs: 150,
+  injectionMethod: 'auto' as const,
+  queueMaxDepth: 3,
+  prewarm: true,
 
   overlay: {
     anchor: 'bottom-center',

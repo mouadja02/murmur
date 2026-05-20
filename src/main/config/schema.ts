@@ -2,6 +2,8 @@ import type { ProviderId } from '../providers/index.js';
 
 export type OverlayAnchor = 'bottom-center' | 'bottom-right' | 'top-right' | 'free';
 
+export type InjectionMethod = 'clipboard' | 'type' | 'auto';
+
 export interface OverlayPosition {
   x: number;
   y: number;
@@ -33,6 +35,9 @@ export interface ResolvedConfig {
 
   // Injection
   clipboardRestoreDelayMs: number;
+  injectionMethod: InjectionMethod;
+  queueMaxDepth: number;
+  prewarm: boolean;
 
   // Overlay window
   overlayAnchor: OverlayAnchor;
@@ -75,6 +80,9 @@ export interface PartialConfig {
   hotkeyCombo?: string;
   toggleHotkeyCombo?: string;
   clipboardRestoreDelayMs?: number;
+  injectionMethod?: InjectionMethod;
+  queueMaxDepth?: number;
+  prewarm?: boolean;
 
   overlay?: {
     anchor?: OverlayAnchor;
@@ -93,6 +101,7 @@ export interface PartialConfig {
 
 const VALID_PROVIDERS: ProviderId[] = ['ollama', 'openai-compat', 'anthropic'];
 const VALID_ANCHORS: OverlayAnchor[] = ['bottom-center', 'bottom-right', 'top-right', 'free'];
+const VALID_INJECTION_METHODS: InjectionMethod[] = ['clipboard', 'type', 'auto'];
 
 function isString(v: unknown): v is string {
   return typeof v === 'string';
@@ -136,6 +145,15 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
   if (isNumber(obj.clipboardRestoreDelayMs)) {
     out.clipboardRestoreDelayMs = obj.clipboardRestoreDelayMs;
   }
+
+  const injectionMethod = pick(obj.injectionMethod, VALID_INJECTION_METHODS);
+  if (injectionMethod) out.injectionMethod = injectionMethod;
+
+  if (isNumber(obj.queueMaxDepth) && obj.queueMaxDepth >= 1) {
+    out.queueMaxDepth = Math.floor(obj.queueMaxDepth);
+  }
+
+  if (typeof obj.prewarm === 'boolean') out.prewarm = obj.prewarm;
 
   const overlay = obj.overlay;
   if (overlay && typeof overlay === 'object') {
