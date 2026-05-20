@@ -81,7 +81,7 @@ export class Pipeline {
       this.audioQueue.shift(); // drop oldest, make room
       this.setStatus('queue-full');
       // Revert back to processing status after brief flash
-      setTimeout(() => this.setStatus('transcribing' as Status), 1_500);
+      setTimeout(() => this.setStatus('transcribing'), 1_500);
     }
     this.audioQueue.push(item);
     this.sendQueueDepth();
@@ -136,6 +136,7 @@ export class Pipeline {
         this.backgroundAudioTimeout = setTimeout(() => {
           console.warn('[pipeline] background recording timed out, discarding');
           this.backgroundSession = null;
+          this.backgroundAudioTimeout = null;
         }, AUDIO_TIMEOUT_MS);
       } else {
         this.deps.getWindow()?.webContents.send(IPC_STOP_RECORDING);
@@ -154,6 +155,7 @@ export class Pipeline {
   }
 
   private async processBuffer(session: Session, buffer: ArrayBuffer): Promise<void> {
+    this.cancelIdle();
     this.state = 'processing';
 
     const { cfg, provider } = this.deps;
@@ -280,13 +282,18 @@ export class Pipeline {
     }
 
     const wavBuf = readFileSync(wavPath);
-    // Strip 44-byte WAV header to recover raw PCM bytes.
-    const pcmBuf = wavBuf.subarray(44);
+    // Validate WAV signature before stripping header.
+    if (wavBuf.length < 44 || wavBuf.toString('ascii', 0, 4) !== 'RIFF') {
+      console.warn('[pipeline] retry: invalid WAV file at', wavPath);
+      return;
+    }
+    // Read the data chunk size from the WAV header (bytes 40-43, little-endian).
+    const dataSize = wavBuf.readUInt32LE(40);
+    const pcmBuf = wavBuf.subarray(44, 44 + dataSize);
     const ab = pcmBuf.buffer.slice(pcmBuf.byteOffset, pcmBuf.byteOffset + pcmBuf.byteLength);
 
     const session = createSession(this.deps.cfg.logsDir);
-    this.session = session;
-    this.state = 'recording';
+    this.state = 'processing';
     await this.processBuffer(session, ab);
   }
 }

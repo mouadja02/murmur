@@ -100,7 +100,6 @@ function setState(state: StateName): void {
   } else if (state === 'idle') {
     overlay.classList.remove('expanded');
     soundbar.stop();
-    dismissErrorToast(); // clear error toast on idle
   } else {
     overlay.classList.add('expanded');
     soundbar.stop();
@@ -168,6 +167,7 @@ window.murmur.onStatus((s) => {
   if ((STATES as readonly string[]).includes(s)) {
     setState(s as StateName);
   }
+  if (s === 'done') dismissErrorToast();
 });
 
 window.murmur.onStartRecording(async () => {
