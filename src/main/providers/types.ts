@@ -28,6 +28,12 @@ export interface LlmProvider {
    * message intended for the preflight log.
    */
   preflight(): Promise<string | null>;
+  /**
+   * Fires a silent no-op request to pre-load the model into memory.
+   * Must not throw — errors are logged and swallowed by the caller.
+   * Returns wall-clock latency in milliseconds.
+   */
+  prewarm?(): Promise<number>;
 }
 
 export const THINK_BLOCK = /<think>[\s\S]*?<\/think>/g;

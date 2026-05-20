@@ -412,6 +412,13 @@ async function bootstrap(): Promise<void> {
   }
   console.log('[murmur] preflight ok');
 
+  if (loaded.resolved.prewarm && provider.prewarm) {
+    const prewarmFn = provider.prewarm.bind(provider);
+    prewarmFn()
+      .then((ms) => console.log(`[murmur] prewarm: ${ms}ms`))
+      .catch((err) => console.warn('[murmur] prewarm failed (non-fatal):', err));
+  }
+
   mainWindow = createOverlayWindow(loaded.resolved);
   tray.create({
     onShow: () => {

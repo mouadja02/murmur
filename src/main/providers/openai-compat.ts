@@ -65,6 +65,26 @@ export class OpenAiCompatProvider implements LlmProvider {
     return { text: stripThink(raw), durationMs: Date.now() - started };
   }
 
+  async prewarm(): Promise<number> {
+    const started = Date.now();
+    try {
+      await fetch(`${this.config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({
+          model: this.config.model,
+          messages: [{ role: 'user', content: ' ' }],
+          max_tokens: 1,
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return Date.now() - started;
+  }
+
   async preflight(): Promise<string | null> {
     // Early check: warn if the user likely forgot the /v1 suffix.
     // LM Studio / llama.cpp / vLLM all require it.

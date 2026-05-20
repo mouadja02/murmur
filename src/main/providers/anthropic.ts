@@ -73,6 +73,25 @@ export class AnthropicProvider implements LlmProvider {
     return { text: stripThink(raw), durationMs: Date.now() - started };
   }
 
+  async prewarm(): Promise<number> {
+    const started = Date.now();
+    try {
+      await fetch(`${this.config.baseUrl}/messages`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({
+          model: this.config.model,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: ' ' }],
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return Date.now() - started;
+  }
+
   async preflight(): Promise<string | null> {
     if (!this.config.apiKey) {
       return 'Anthropic requires an API key. Get one at https://console.anthropic.com/settings/api-keys';
