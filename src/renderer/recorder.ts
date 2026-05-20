@@ -1,4 +1,5 @@
-const TARGET_SAMPLE_RATE = 16000;
+import { downsample, floatsToInt16PCM, TARGET_SAMPLE_RATE } from '../shared/pcm.js';
+
 const BUFFER_SIZE = 4096;
 const ANALYSER_FFT_SIZE = 256; // -> 128 frequency bins
 
@@ -14,30 +15,6 @@ interface CaptureState {
 }
 
 let state: CaptureState | null = null;
-
-function floatsToInt16PCM(chunks: Float32Array[]): Int16Array {
-  const total = chunks.reduce((n, c) => n + c.length, 0);
-  const out = new Int16Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    for (let i = 0; i < c.length; i++) {
-      const v = Math.max(-1, Math.min(1, c[i] ?? 0));
-      out[offset++] = v < 0 ? v * 0x8000 : v * 0x7fff;
-    }
-  }
-  return out;
-}
-
-function downsample(input: Int16Array, fromRate: number, toRate: number): Int16Array {
-  if (fromRate === toRate) return input;
-  const ratio = fromRate / toRate;
-  const outLength = Math.floor(input.length / ratio);
-  const out = new Int16Array(outLength);
-  for (let i = 0; i < outLength; i++) {
-    out[i] = input[Math.floor(i * ratio)] ?? 0;
-  }
-  return out;
-}
 
 export async function startCapture(): Promise<void> {
   if (state) return;
