@@ -35,6 +35,7 @@ import {
   toggleOverlayVisibility,
 } from './overlay/window.js';
 import { Pipeline } from './pipeline.js';
+import { TrayService, type TrayIconState } from './tray.js';
 import { runPreflight } from './preflight.js';
 import {
   findMurmurUrlInArgv,
@@ -51,6 +52,7 @@ let pipeline: Pipeline | null = null;
 let provider: LlmProvider | null = null;
 let controlPanel: ServerHandle | null = null;
 const hotkey = new HotkeyService();
+const tray = new TrayService();
 
 const POSITION_SAVE_DEBOUNCE_MS = 350;
 
@@ -307,6 +309,12 @@ function reloadConfigAfterExternalUpdate(): void {
       cfg: loaded.resolved,
       provider,
       getWindow: () => mainWindow,
+      onStatus: (s) => {
+        let iconState: TrayIconState = 'idle';
+        if (s === 'recording') iconState = 'recording';
+        else if (s === 'transcribing' || s === 'refining' || s === 'injecting') iconState = 'processing';
+        tray.setState(iconState);
+      },
     });
   }
   rebindHotkeys();
@@ -405,10 +413,29 @@ async function bootstrap(): Promise<void> {
   console.log('[murmur] preflight ok');
 
   mainWindow = createOverlayWindow(loaded.resolved);
+  tray.create({
+    onShow: () => {
+      if (mainWindow) showOverlay(mainWindow);
+      tray.setVisibility(true);
+    },
+    onHide: () => {
+      if (mainWindow) hideOverlay(mainWindow);
+      tray.setVisibility(false);
+    },
+    onPanel: openControlPanelExternal,
+    onQuit: () => app.quit(),
+    isVisible: () => mainWindow?.isVisible() ?? false,
+  });
   pipeline = new Pipeline({
     cfg: loaded.resolved,
     provider,
     getWindow: () => mainWindow,
+    onStatus: (s) => {
+      let iconState: TrayIconState = 'idle';
+      if (s === 'recording') iconState = 'recording';
+      else if (s === 'transcribing' || s === 'refining' || s === 'injecting') iconState = 'processing';
+      tray.setState(iconState);
+    },
   });
 
   setupPositionPersistence(mainWindow);
@@ -450,6 +477,7 @@ if (app.hasSingleInstanceLock()) {
 
 app.on('before-quit', () => {
   hotkey.shutdown();
+  tray.destroy();
   controlPanel?.stop().catch(() => undefined);
 });
 
