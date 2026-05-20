@@ -1,12 +1,12 @@
+// src/renderer/recorder.ts
 import { downsample, floatsToInt16PCM, TARGET_SAMPLE_RATE } from '../shared/pcm.js';
 
-const BUFFER_SIZE = 4096;
-const ANALYSER_FFT_SIZE = 256; // -> 128 frequency bins
+const ANALYSER_FFT_SIZE = 256;
 
 interface CaptureState {
   stream: MediaStream;
   audioContext: AudioContext;
-  processor: ScriptProcessorNode;
+  workletNode: AudioWorkletNode;
   mute: GainNode;
   analyser: AnalyserNode;
   freqBuffer: Uint8Array<ArrayBuffer>;
@@ -35,8 +35,12 @@ export async function startCapture(): Promise<void> {
     audioContext = new AudioContext();
   }
 
+  // Load the worklet module relative to this script's URL.
+  const workletUrl = new URL('./recorder-worklet.js', import.meta.url);
+  await audioContext.audioWorklet.addModule(workletUrl.href);
+
   const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+  const workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
   const mute = audioContext.createGain();
   mute.gain.value = 0;
   const analyser = audioContext.createAnalyser();
@@ -44,19 +48,19 @@ export async function startCapture(): Promise<void> {
   analyser.smoothingTimeConstant = 0.6;
 
   const chunks: Float32Array[] = [];
-  processor.onaudioprocess = (e) => {
-    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
+    chunks.push(new Float32Array(e.data));
   };
 
   source.connect(analyser);
-  source.connect(processor);
-  processor.connect(mute);
+  source.connect(workletNode);
+  workletNode.connect(mute);
   mute.connect(audioContext.destination);
 
   state = {
     stream,
     audioContext,
-    processor,
+    workletNode,
     mute,
     analyser,
     freqBuffer: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)),
@@ -70,7 +74,8 @@ export async function stopCapture(): Promise<ArrayBuffer> {
   const captured = state;
   state = null;
 
-  captured.processor.disconnect();
+  captured.workletNode.port.onmessage = null;
+  captured.workletNode.disconnect();
   captured.mute.disconnect();
   captured.analyser.disconnect();
   try {
