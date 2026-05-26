@@ -22,6 +22,7 @@ export interface Skill {
 }
 
 const FRONTMATTER_RE = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n([\s\S]*)$/;
+const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function parseFrontmatter(raw: string): { meta: Record<string, string>; body: string } {
   const match = raw.match(FRONTMATTER_RE);
@@ -42,6 +43,27 @@ function slugify(name: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 64) || 'skill'
   );
+}
+
+export function isValidSkillId(id: string): boolean {
+  return SKILL_ID_RE.test(id);
+}
+
+function assertValidSkillId(id: string): void {
+  if (!isValidSkillId(id)) {
+    throw new Error(`invalid skill id "${id}"; use 1-64 lowercase letters, numbers, and hyphens`);
+  }
+}
+
+function skillPath(dir: string, id: string): string {
+  assertValidSkillId(id);
+  const root = path.resolve(dir);
+  const filePath = path.resolve(root, `${id}.md`);
+  const relative = path.relative(root, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`invalid skill path for "${id}"`);
+  }
+  return filePath;
 }
 
 function ensureDir(dir: string): void {
@@ -93,6 +115,10 @@ export function loadSkills(dir: string): Skill[] {
     }
     const { meta, body } = parseFrontmatter(raw);
     const id = meta.id || entry.replace(/\.md$/i, '');
+    if (!isValidSkillId(id)) {
+      console.warn(`[skills] skipped ${filePath}: invalid skill id "${id}"`);
+      continue;
+    }
     out.push({
       id,
       name: meta.name || id,
@@ -115,7 +141,7 @@ export interface SaveSkillInput {
 export function saveSkill(dir: string, input: SaveSkillInput): Skill {
   ensureDir(dir);
   const id = input.id?.trim() || slugify(input.name);
-  const filePath = path.join(dir, `${id}.md`);
+  const filePath = skillPath(dir, id);
   const meta = [`id: ${id}`, `name: ${input.name}`, `description: ${input.description ?? ''}`].join(
     '\n',
   );
@@ -131,7 +157,7 @@ export function saveSkill(dir: string, input: SaveSkillInput): Skill {
 }
 
 export function deleteSkill(dir: string, id: string): boolean {
-  const filePath = path.join(dir, `${id}.md`);
+  const filePath = skillPath(dir, id);
   if (!existsSync(filePath)) return false;
   unlinkSync(filePath);
   return true;

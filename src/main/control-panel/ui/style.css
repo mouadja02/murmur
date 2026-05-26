@@ -314,6 +314,16 @@ textarea:focus {
   background: #1d1d2a;
 }
 
+.btn:focus-visible,
+.tab:focus-visible,
+.import-tab:focus-visible,
+.preset:focus-visible,
+.link-btn:focus-visible,
+.skill-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 input[readonly] {
   color: var(--text-dim);
 }
@@ -425,6 +435,16 @@ textarea {
 .hint {
   color: var(--text-faint);
   font-size: 12px;
+}
+
+.safety-note {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 code {
@@ -791,6 +811,17 @@ code {
   }
   .split {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
   }
 }
 

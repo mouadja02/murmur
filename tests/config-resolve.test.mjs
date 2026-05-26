@@ -67,6 +67,23 @@ describe('loadConfig — non-whisper paths still resolve against config dir', ()
 });
 
 describe('loadConfig — first-run LLM env precedence', () => {
+  it('rejects non-http provider URLs from environment variables', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'murmur-cfg-'));
+    const oldBaseUrl = process.env.LLM_BASE_URL;
+    try {
+      process.env.LLM_BASE_URL = 'file:///tmp/socket';
+
+      const loaded = loadConfig({ userDataDir: tmp, argv: ['node', 'test'] });
+
+      assert.equal(loaded.resolved.baseUrl, 'http://localhost:11434');
+      assert.equal(loaded.valueSources.baseUrl, 'default');
+    } finally {
+      if (oldBaseUrl === undefined) delete process.env.LLM_BASE_URL;
+      else process.env.LLM_BASE_URL = oldBaseUrl;
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('does not seed provider/baseUrl/model into a fresh config when env supplies them', () => {
     const tmp = mkdtempSync(path.join(tmpdir(), 'murmur-cfg-'));
     const oldProvider = process.env.LLM_PROVIDER;

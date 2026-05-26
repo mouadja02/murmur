@@ -43,6 +43,7 @@ export const DEFAULT_CONFIG: Required<Omit<PartialConfig, 'apiKey' | 'overlay'>>
   hotkeyCombo: 'Ctrl+Shift+Space',
   toggleHotkeyCombo: 'Ctrl+Shift+H',
   clipboardRestoreDelayMs: 150,
+  clipboardRetention: 'keep-generated' as const,
   injectionMethod: 'auto' as const,
   queueMaxDepth: 3,
   prewarm: true,
@@ -57,6 +58,7 @@ export const DEFAULT_CONFIG: Required<Omit<PartialConfig, 'apiKey' | 'overlay'>>
   enabledSkills: [],
   controlPanelPort: 7331,
 
+  logMode: 'metadata-only' as const,
   logsDir: './logs',
   skillsDir: './skills',
 };

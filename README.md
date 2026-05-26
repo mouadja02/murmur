@@ -31,7 +31,7 @@ Think of it as:
 1. **A small pill floats on your desktop.** Always on top. Drag it anywhere.
 2. **Click it (or hold `Ctrl+Shift+Space`) and talk.** A soundbar reacts while you speak.
 3. **Release.** The pill walks through *recording → transcribing → refining → injecting → done*.
-4. **The refined prompt appears at your cursor.** Your original clipboard is restored a moment later.
+4. **The refined prompt appears at your cursor.** Murmur copies it to your clipboard, auto-pastes it with the platform paste shortcut, and leaves it there so you can paste again manually.
 
 You stay in flow. No context switch. No "open app, paste, reformat, paste again."
 
@@ -139,9 +139,9 @@ Four stages, strictly local:
 | **Capture** | The overlay records 16 kHz mono PCM while you hold the hotkey (or between two clicks). |
 | **Transcribe** | `whisper.cpp` turns the WAV into text on your CPU. |
 | **Refine** | Your local LLM rewrites the transcription into a concise prompt using your active system prompt + enabled skills. |
-| **Inject** | Murmur copies the refined text, fires `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) at your current cursor, then restores whatever was on your clipboard before. |
+| **Inject** | Murmur copies the refined text, fires `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) at your current cursor, and keeps the generated prompt on your clipboard by default. |
 
-Every session gets a timestamped folder under `logs/` with the WAV, the raw transcription, the exact prompt sent to the LLM, and the refined output — so you can debug anything after the fact.
+Every session gets a timestamped folder under `logs/`. By default it stores timings and errors only; enable **Full debugging** in the control panel if you want audio, raw transcription, system prompt, and refined output persisted locally.
 
 ---
 
@@ -157,7 +157,7 @@ Every session gets a timestamped folder under `logs/` with the WAV, the raw tran
 - **Terminal pre-launch banner** — every `pnpm dev` shows your current setup and offers a one-key menu to edit the prompt or jump to the panel.
 - **Provider agnostic** — Ollama native API, any OpenAI-compatible server (LM Studio, llama.cpp server, vLLM, Jan, KoboldCpp, oobabooga, …), and Anthropic Claude.
 - **100 % local by default** — no telemetry, no outbound network calls except to the LLM server you configured.
-- **Session logs** — every run writes audio + timings + prompts to `logs/<timestamp>/` for full traceability.
+- **Privacy-aware session logs** — default logs keep timings and errors only. Full local debugging logs can be enabled when you need audio + prompt traceability.
 
 ---
 
@@ -171,7 +171,7 @@ Open it from the overlay (right-click → **Open control panel**), from the pre-
 | **Skills** | Add, edit, rename, delete skills. Import from a local `.md` file or any raw Markdown URL (GitHub raw, Gist, …). One click to enable/disable each. |
 | **Provider** | Switch provider, base URL, model, API key, temperature. One-click presets for local and online providers. **Test connection** button reports latency. Fields pinned by CLI flags or env vars are shown read-only with a lock badge — see [Config precedence](#config-precedence). |
 | **Whisper** | Point to a different `whisper-cli` binary (or `whisper-cli.exe` on Windows) or `.bin` model. |
-| **Hotkeys** | Bind push-to-talk and toggle combos. |
+| **Hotkeys** | Bind push-to-talk and toggle combos, choose insertion mode, and decide whether the generated prompt stays on the clipboard after auto-paste. |
 | **Paths** | Logs dir, skills dir, and the resolved config file path. |
 | **Model guide** | Hardware-tiered model recommendations with one-click `ollama pull` copy commands. |
 
@@ -312,7 +312,15 @@ To unlock a field: remove the corresponding entry from your `.env` file or drop 
 
 ## Session logs
 
-Every invocation writes to `logs/<ISO-timestamp>/`:
+Every invocation writes a timestamped folder under `logs/<ISO-timestamp>/`. The default `logMode` is `metadata-only`, which avoids persisting audio, transcripts, system prompts, or refined prompts:
+
+```
+logs/2026-04-17T19-28-01-234Z/
+├── whisper-stderr.log
+└── timings.json          # audioDurationMs, transcribeMs, refineMs, injectMs, totalMs
+```
+
+If you switch **Paths → Session logging** to `full`, Murmur also persists the content artifacts for local debugging:
 
 ```
 logs/2026-04-17T19-28-01-234Z/
@@ -324,7 +332,7 @@ logs/2026-04-17T19-28-01-234Z/
 └── timings.json          # audioDurationMs, transcribeMs, refineMs, injectMs, totalMs
 ```
 
-`timings.json` is your ground truth for end-to-end latency — see **Latency** below.
+`timings.json` is your ground truth for end-to-end latency — see **Latency** below. Full logs may contain sensitive speech and prompt data; keep `metadata-only` for privacy-sensitive work.
 
 ---
 
@@ -350,7 +358,10 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 | `--whisper-model <path>` | Path to a `ggml-*.bin` model file |
 | `--hotkey <combo>` | Push-to-talk combo (default `Ctrl+Shift+Space`) |
 | `--toggle-hotkey <combo>` | Show/hide combo (default `Ctrl+Shift+H`) |
+| `--injection-method <auto\|clipboard\|type>` | Insert by paste, type directly, or paste with typing fallback |
+| `--clipboard-retention <keep-generated\|restore-previous>` | Keep the generated prompt on the clipboard after paste, or restore the previous clipboard |
 | `--logs-dir <path>` | Per-session logs directory |
+| `--log-mode <metadata-only\|full>` | Persist timings/errors only, or full local debugging artifacts |
 | `--skills-dir <path>` | Skill `.md` files directory (default `./skills`) |
 | `--enabled-skills <a,b,c>` | Comma-separated skill IDs to force-enable for this launch |
 | `--system-prompt <text>` | Override the active system prompt (skills still layer on top) |
@@ -392,12 +403,15 @@ LLM fields are optional. If you keep env-backed LLM values during first-run setu
   "hotkeyCombo": "Ctrl+Shift+Space",
   "toggleHotkeyCombo": "Ctrl+Shift+H",
   "clipboardRestoreDelayMs": 150,
+  "clipboardRetention": "keep-generated",
+  "injectionMethod": "auto",
   "overlay": {
     "anchor": "bottom-center",
     "offsetX": 0,
     "offsetY": 24,
     "position": null
   },
+  "logMode": "metadata-only",
   "logsDir": "./logs",
   "skillsDir": "./skills",
   "systemPrompt": "You refine a raw voice transcription …",
@@ -426,7 +440,11 @@ Environment variables have lower precedence than CLI flags and the config file. 
 | `WHISPER_MODEL_PATH` | `whisperModelPath` |
 | `MURMUR_HOTKEY` | `hotkeyCombo` |
 | `MURMUR_TOGGLE_HOTKEY` | `toggleHotkeyCombo` |
+| `MURMUR_CLIPBOARD_RESTORE_DELAY_MS` | `clipboardRestoreDelayMs` |
+| `MURMUR_CLIPBOARD_RETENTION` | `clipboardRetention` |
+| `MURMUR_INJECTION_METHOD` | `injectionMethod` |
 | `MURMUR_LOGS_DIR` | `logsDir` |
+| `MURMUR_LOG_MODE` | `logMode` |
 | `MURMUR_SKILLS_DIR` | `skillsDir` |
 | `MURMUR_SYSTEM_PROMPT` | `systemPrompt` |
 | `MURMUR_ENABLED_SKILLS` | `enabledSkills` (comma-separated) |
@@ -550,7 +568,7 @@ Files shipped to npm are whitelisted in `package.json#files` — run `pnpm pack`
 
 1. **No streaming anywhere.** Each stage is strictly sequential. Streaming STT + streaming LLM + streaming injection is the biggest pending latency win.
 2. **Model cold-start dominates first-run latency.** Pre-warming the model on app start (`keep_alive`) is queued.
-3. **Paste-based injection only**, no per-target typing fallback.
+3. **Per-target injection rules are still basic.** `auto` mode can fall back from paste to typing, but there is not yet a per-app rules engine.
 4. **No VAD / silence trimming.** Trailing "uhh" and dead air get transcribed and fed to the LLM.
 5. **Renderer uses the deprecated `ScriptProcessorNode`.** Move to `AudioWorklet` before any non-spike build.
 6. **No tray icon.** Hide / show is handled by the toggle hotkey and the right-click context menu; restart re-shows the overlay if you ever lose the toggle binding. A tray fallback is queued.

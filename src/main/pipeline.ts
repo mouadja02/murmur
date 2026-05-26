@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import {
@@ -44,6 +44,7 @@ export class Pipeline {
   private backgroundSession: Session | null = null;
   private backgroundAudioTimeout: NodeJS.Timeout | null = null;
   private lastErrorSessionDir: string | null = null;
+  private lastErrorAudioBuffer: ArrayBuffer | null = null;
 
   constructor(private readonly deps: PipelineDeps) {}
 
@@ -103,7 +104,7 @@ export class Pipeline {
     }
     this.cancelIdle();
     this.state = 'recording';
-    this.session = createSession(this.deps.cfg.logsDir);
+    this.session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
     console.log(`[pipeline] session=${this.session.dir}`);
     this.setStatus('recording');
     this.deps.getWindow()?.webContents.send(IPC_START_RECORDING);
@@ -131,7 +132,7 @@ export class Pipeline {
       this.stop();
     } else if (this.state === 'processing') {
       if (this.backgroundSession === null) {
-        this.backgroundSession = createSession(this.deps.cfg.logsDir);
+        this.backgroundSession = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
         this.deps.getWindow()?.webContents.send(IPC_START_RECORDING);
         this.backgroundAudioTimeout = setTimeout(() => {
           console.warn('[pipeline] background recording timed out, discarding');
@@ -161,12 +162,15 @@ export class Pipeline {
     const { cfg, provider } = this.deps;
     const timings: Record<string, number | string> = { provider: provider.config.id };
     const pipelineStart = Date.now();
+    let transientWavPath: string | null = null;
 
     try {
       const pcm = Buffer.from(buffer);
       const wav = buildWav(pcm, cfg.sampleRate);
-      session.writeAudio(wav);
       const wavPath = path.join(session.dir, 'audio.wav');
+      transientWavPath = wavPath;
+      writeFileSync(wavPath, wav);
+      if (cfg.logMode === 'full') session.writeAudio(wav);
       timings.audioBytes = wav.length;
       timings.audioDurationMs = Math.round((pcm.length / 2 / cfg.sampleRate) * 1000);
 
@@ -179,8 +183,10 @@ export class Pipeline {
       timings.transcribeMs = Date.now() - tStart;
       session.writeTranscription(transcription);
       writeFileSync(path.join(session.dir, 'whisper-stderr.log'), whisperStderr, 'utf8');
+      if (cfg.logMode !== 'full') rmSync(wavPath, { force: true });
+      transientWavPath = null;
       console.log(
-        `[pipeline] transcription (${timings.transcribeMs} ms): ${JSON.stringify(transcription)}`,
+        `[pipeline] transcription complete (${timings.transcribeMs} ms, ${transcription.length} chars)`,
       );
 
       if (!transcription) throw new Error('whisper returned empty transcription');
@@ -197,7 +203,9 @@ export class Pipeline {
       });
       timings.refineMs = Date.now() - rStart;
       session.writeRefined(refined);
-      console.log(`[pipeline] refined (${timings.refineMs} ms): ${JSON.stringify(refined)}`);
+      console.log(
+        `[pipeline] refinement complete (${timings.refineMs} ms, ${refined.length} chars)`,
+      );
 
       if (!refined) throw new Error(`${provider.config.displayName} returned empty refinement`);
 
@@ -205,6 +213,7 @@ export class Pipeline {
       const iStart = Date.now();
       await pasteAtCursor(refined, {
         clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
+        clipboardRetention: cfg.clipboardRetention,
         injectionMethod: cfg.injectionMethod,
       });
       timings.injectMs = Date.now() - iStart;
@@ -215,16 +224,19 @@ export class Pipeline {
       );
 
       this.lastErrorSessionDir = null;
+      this.lastErrorAudioBuffer = null;
       this.state = 'idle';
       this.setStatus('done');
       this.scheduleIdle();
       this.processNextQueued();
     } catch (err) {
+      if (cfg.logMode !== 'full' && transientWavPath) rmSync(transientWavPath, { force: true });
       console.error('[pipeline] error:', err);
       session.writeError(err);
       timings.totalMs = Date.now() - pipelineStart;
       session.writeTimings(timings);
       this.lastErrorSessionDir = session.dir;
+      this.lastErrorAudioBuffer = buffer.slice(0);
       this.state = 'idle';
       const message = err instanceof Error ? err.message : String(err);
       this.deps.getWindow()?.webContents.send(IPC_ERROR, {
@@ -278,6 +290,15 @@ export class Pipeline {
     const sessionDir = this.lastErrorSessionDir;
     this.lastErrorSessionDir = null;
 
+    if (this.lastErrorAudioBuffer) {
+      const buffer = this.lastErrorAudioBuffer;
+      this.lastErrorAudioBuffer = null;
+      const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
+      this.state = 'processing';
+      await this.processBuffer(session, buffer);
+      return;
+    }
+
     const wavPath = path.join(sessionDir, 'audio.wav');
     if (!existsSync(wavPath)) {
       console.warn('[pipeline] retry: audio.wav not found at', wavPath);
@@ -295,7 +316,7 @@ export class Pipeline {
     const pcmBuf = wavBuf.subarray(44, 44 + dataSize);
     const ab = pcmBuf.buffer.slice(pcmBuf.byteOffset, pcmBuf.byteOffset + pcmBuf.byteLength);
 
-    const session = createSession(this.deps.cfg.logsDir);
+    const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
     this.state = 'processing';
     await this.processBuffer(session, ab);
   }
