@@ -5,13 +5,21 @@ import { PROVIDER_PRESETS, type ProviderConfig } from '../providers/index.js';
 import { type CliResult, parseCli } from './cli.js';
 import { DEFAULT_CONFIG } from './defaults.js';
 import { readConfigFile, writeDefaultConfigIfMissing } from './file.js';
-import type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
+import {
+  type OverlayAnchor,
+  type OverlayPosition,
+  type PartialConfig,
+  type ResolvedConfig,
+  sanitizePartial,
+} from './schema.js';
 
 export { HELP_TEXT } from './cli.js';
 export { DEFAULT_CONFIG, DEFAULT_SYSTEM_PROMPT } from './defaults.js';
 export { updateConfigFile } from './file.js';
 export type {
+  ClipboardRetention,
   InjectionMethod,
+  LogMode,
   OverlayAnchor,
   OverlayPosition,
   PartialConfig,
@@ -58,7 +66,27 @@ function readEnv(): PartialConfig {
   if (e.WHISPER_MODEL_PATH) partial.whisperModelPath = e.WHISPER_MODEL_PATH;
   if (e.MURMUR_HOTKEY) partial.hotkeyCombo = e.MURMUR_HOTKEY;
   if (e.MURMUR_TOGGLE_HOTKEY) partial.toggleHotkeyCombo = e.MURMUR_TOGGLE_HOTKEY;
+  if (e.MURMUR_CLIPBOARD_RESTORE_DELAY_MS) {
+    const n = Number(e.MURMUR_CLIPBOARD_RESTORE_DELAY_MS);
+    if (Number.isFinite(n)) partial.clipboardRestoreDelayMs = n;
+  }
+  if (
+    e.MURMUR_CLIPBOARD_RETENTION === 'keep-generated' ||
+    e.MURMUR_CLIPBOARD_RETENTION === 'restore-previous'
+  ) {
+    partial.clipboardRetention = e.MURMUR_CLIPBOARD_RETENTION;
+  }
+  if (
+    e.MURMUR_INJECTION_METHOD === 'clipboard' ||
+    e.MURMUR_INJECTION_METHOD === 'type' ||
+    e.MURMUR_INJECTION_METHOD === 'auto'
+  ) {
+    partial.injectionMethod = e.MURMUR_INJECTION_METHOD;
+  }
   if (e.MURMUR_LOGS_DIR) partial.logsDir = e.MURMUR_LOGS_DIR;
+  if (e.MURMUR_LOG_MODE === 'metadata-only' || e.MURMUR_LOG_MODE === 'full') {
+    partial.logMode = e.MURMUR_LOG_MODE;
+  }
   if (e.MURMUR_SKILLS_DIR) partial.skillsDir = e.MURMUR_SKILLS_DIR;
   if (e.MURMUR_SYSTEM_PROMPT) partial.systemPrompt = e.MURMUR_SYSTEM_PROMPT;
   if (e.MURMUR_ENABLED_SKILLS) {
@@ -71,7 +99,7 @@ function readEnv(): PartialConfig {
     if (Number.isFinite(n)) partial.controlPanelPort = n;
   }
 
-  return partial;
+  return sanitizePartial(partial, 'env');
 }
 
 function pickFirst<T>(...candidates: (T | null | undefined)[]): T | undefined {
@@ -287,6 +315,12 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       sources.file.clipboardRestoreDelayMs,
       sources.env.clipboardRestoreDelayMs,
     ) ?? DEFAULT_CONFIG.clipboardRestoreDelayMs;
+  const clipboardRetention =
+    pickFirst(
+      sources.cli.clipboardRetention,
+      sources.file.clipboardRetention,
+      sources.env.clipboardRetention,
+    ) ?? DEFAULT_CONFIG.clipboardRetention;
   const injectionMethod =
     pickFirst(
       sources.cli.injectionMethod,
@@ -314,6 +348,9 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       sources.file.controlPanelPort,
       sources.env.controlPanelPort,
     ) ?? DEFAULT_CONFIG.controlPanelPort;
+  const logMode =
+    pickFirst(sources.cli.logMode, sources.file.logMode, sources.env.logMode) ??
+    DEFAULT_CONFIG.logMode;
 
   const resolved: ResolvedConfig = {
     provider,
@@ -331,6 +368,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     hotkeyCombo,
     toggleHotkeyCombo,
     clipboardRestoreDelayMs,
+    clipboardRetention,
     injectionMethod,
     queueMaxDepth,
     prewarm,
@@ -341,6 +379,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     systemPrompt,
     enabledSkills,
     controlPanelPort,
+    logMode,
     logsDir: resolveLayeredPath(sources, 'logsDir', DEFAULT_CONFIG.logsDir),
     skillsDir: resolveLayeredPath(sources, 'skillsDir', DEFAULT_CONFIG.skillsDir),
     configFilePath,
@@ -380,6 +419,9 @@ function computeValueSources(sources: MergeSources): ConfigValueSources {
     'hotkeyCombo',
     'toggleHotkeyCombo',
     'clipboardRestoreDelayMs',
+    'clipboardRetention',
+    'injectionMethod',
+    'logMode',
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',
@@ -414,6 +456,9 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
     'hotkeyCombo',
     'toggleHotkeyCombo',
     'clipboardRestoreDelayMs',
+    'clipboardRetention',
+    'injectionMethod',
+    'logMode',
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',

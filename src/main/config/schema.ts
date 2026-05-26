@@ -3,6 +3,8 @@ import type { ProviderId } from '../providers/index.js';
 export type OverlayAnchor = 'bottom-center' | 'bottom-right' | 'top-right' | 'free';
 
 export type InjectionMethod = 'clipboard' | 'type' | 'auto';
+export type ClipboardRetention = 'keep-generated' | 'restore-previous';
+export type LogMode = 'metadata-only' | 'full';
 
 export interface OverlayPosition {
   x: number;
@@ -35,6 +37,7 @@ export interface ResolvedConfig {
 
   // Injection
   clipboardRestoreDelayMs: number;
+  clipboardRetention: ClipboardRetention;
   injectionMethod: InjectionMethod;
   queueMaxDepth: number;
   prewarm: boolean;
@@ -56,6 +59,7 @@ export interface ResolvedConfig {
   controlPanelPort: number;
 
   // Paths
+  logMode: LogMode;
   logsDir: string;
   skillsDir: string;
   configFilePath: string;
@@ -80,6 +84,7 @@ export interface PartialConfig {
   hotkeyCombo?: string;
   toggleHotkeyCombo?: string;
   clipboardRestoreDelayMs?: number;
+  clipboardRetention?: ClipboardRetention;
   injectionMethod?: InjectionMethod;
   queueMaxDepth?: number;
   prewarm?: boolean;
@@ -96,12 +101,16 @@ export interface PartialConfig {
   controlPanelPort?: number;
 
   logsDir?: string;
+  logMode?: LogMode;
   skillsDir?: string;
 }
 
 const VALID_PROVIDERS: ProviderId[] = ['ollama', 'openai-compat', 'anthropic'];
 const VALID_ANCHORS: OverlayAnchor[] = ['bottom-center', 'bottom-right', 'top-right', 'free'];
 const VALID_INJECTION_METHODS: InjectionMethod[] = ['clipboard', 'type', 'auto'];
+const VALID_CLIPBOARD_RETENTION: ClipboardRetention[] = ['keep-generated', 'restore-previous'];
+const VALID_LOG_MODES: LogMode[] = ['metadata-only', 'full'];
+const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function isString(v: unknown): v is string {
   return typeof v === 'string';
@@ -115,6 +124,17 @@ function pick<T extends string>(value: unknown, allowed: readonly T[]): T | unde
   return isString(value) && (allowed as readonly string[]).includes(value)
     ? (value as T)
     : undefined;
+}
+
+function sanitizeHttpUrl(value: unknown): string | undefined {
+  if (!isString(value)) return undefined;
+  const trimmed = value.trim();
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? trimmed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -131,7 +151,8 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
 
   const provider = pick(obj.provider, VALID_PROVIDERS);
   if (provider) out.provider = provider;
-  if (isString(obj.baseUrl)) out.baseUrl = obj.baseUrl;
+  const baseUrl = sanitizeHttpUrl(obj.baseUrl);
+  if (baseUrl) out.baseUrl = baseUrl;
   if (isString(obj.model)) out.model = obj.model;
   if (obj.apiKey === null || isString(obj.apiKey)) out.apiKey = obj.apiKey;
   if (isNumber(obj.temperature)) out.temperature = obj.temperature;
@@ -145,6 +166,8 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
   if (isNumber(obj.clipboardRestoreDelayMs)) {
     out.clipboardRestoreDelayMs = obj.clipboardRestoreDelayMs;
   }
+  const clipboardRetention = pick(obj.clipboardRetention, VALID_CLIPBOARD_RETENTION);
+  if (clipboardRetention) out.clipboardRetention = clipboardRetention;
 
   const injectionMethod = pick(obj.injectionMethod, VALID_INJECTION_METHODS);
   if (injectionMethod) out.injectionMethod = injectionMethod;
@@ -171,11 +194,15 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
   }
 
   if (isString(obj.logsDir)) out.logsDir = obj.logsDir;
+  const logMode = pick(obj.logMode, VALID_LOG_MODES);
+  if (logMode) out.logMode = logMode;
   if (isString(obj.skillsDir)) out.skillsDir = obj.skillsDir;
 
   if (isString(obj.systemPrompt)) out.systemPrompt = obj.systemPrompt;
   if (Array.isArray(obj.enabledSkills)) {
-    out.enabledSkills = obj.enabledSkills.filter(isString);
+    out.enabledSkills = obj.enabledSkills.filter(
+      (id): id is string => isString(id) && SKILL_ID_RE.test(id),
+    );
   }
   if (
     isNumber(obj.controlPanelPort) &&

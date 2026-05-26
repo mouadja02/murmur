@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -62,6 +62,19 @@ describe('skills', () => {
       all.find((s) => s.id === 'x'),
       undefined,
     );
+  });
+
+  it('rejects non-slug skill ids before touching the filesystem', () => {
+    const outside = path.join(path.dirname(dir), 'evil.md');
+    rmSync(outside, { force: true });
+
+    assert.throws(
+      () => saveSkill(dir, { id: '../evil', name: 'evil', content: 'nope' }),
+      /invalid skill id/i,
+    );
+    assert.equal(existsSync(outside), false, 'saveSkill must not write outside skills dir');
+
+    assert.throws(() => deleteSkill(dir, '..%2fevil'), /invalid skill id/i);
   });
 
   it('composeSystemPrompt returns base prompt when nothing is enabled', () => {

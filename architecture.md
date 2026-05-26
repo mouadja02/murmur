@@ -434,14 +434,14 @@ Two strategies, auto-selected per target app:
 ### Strategy A — Clipboard paste (default)
 
 ```
-1. Save current clipboard
+1. Optionally save current clipboard
 2. Write refined prompt to clipboard
 3. Send Cmd/Ctrl+V to the active window
 4. Wait 100ms
-5. Restore saved clipboard
+5. Keep generated prompt on the clipboard by default, or restore saved clipboard if configured
 ```
 
-Fast, works everywhere, 99% of the time.
+Fast, works everywhere, 99% of the time. Keeping the generated prompt available lets users paste again manually if the target app misses the synthetic paste.
 
 **Gotchas:**
 - Some password managers and secure fields block paste. Detect via window class and fall back to typing.
@@ -662,8 +662,8 @@ Goal: something you're proud to put on Hacker News.
 This is a differentiator, not a compliance checkbox.
 
 - **No network calls by default.** The only outbound requests are: (1) app update checks (off in settings), (2) skill installs from explicit URLs, (3) Ollama on `localhost`. Nothing else.
-- **Transcriptions and refined prompts are never persisted** unless the user opts into the history feature. Even then, stored locally only, encrypted with OS keychain.
-- **Never log audio.** Period. Not even for debugging.
+- **Transcriptions and refined prompts are not persisted in the default metadata-only log mode.** Users can explicitly enable full local debugging logs when they need traceability.
+- **Do not keep audio by default.** Full debugging logs may persist the WAV locally, with clear UI/docs warnings.
 - **Opt-in telemetry only,** and it contains zero content — only anonymous usage events (which skill was invoked, which model, latency buckets). Publish the exact payload format.
 - **Reproducible builds.** The `@murmur/core` binary is built in CI from a public commit SHA. Users can verify.
 - **Clear-text config.** All configs are human-readable YAML/JSON in `~/.config/murmur/`. Respect the user's right to inspect and port.
