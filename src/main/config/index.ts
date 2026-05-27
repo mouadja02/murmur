@@ -24,6 +24,7 @@ export type {
   OverlayPosition,
   PartialConfig,
   ResolvedConfig,
+  RunMode,
 } from './schema.js';
 
 /**
@@ -98,6 +99,11 @@ function readEnv(): PartialConfig {
     const n = Number(e.MURMUR_CONTROL_PANEL_PORT);
     if (Number.isFinite(n)) partial.controlPanelPort = n;
   }
+  if (e.MURMUR_MCP_PORT) {
+    const n = Number(e.MURMUR_MCP_PORT);
+    if (Number.isFinite(n)) partial.mcpPort = n;
+  }
+  if (e.MURMUR_RECORDER_COMMAND) partial.recorderCommand = e.MURMUR_RECORDER_COMMAND;
 
   return sanitizePartial(partial, 'env');
 }
@@ -351,6 +357,15 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
   const logMode =
     pickFirst(sources.cli.logMode, sources.file.logMode, sources.env.logMode) ??
     DEFAULT_CONFIG.logMode;
+  const mcpPort =
+    pickFirst(sources.cli.mcpPort, sources.file.mcpPort, sources.env.mcpPort) ??
+    DEFAULT_CONFIG.mcpPort;
+  const recorderCommand =
+    pickFirst(
+      sources.cli.recorderCommand,
+      sources.file.recorderCommand,
+      sources.env.recorderCommand,
+    ) ?? DEFAULT_CONFIG.recorderCommand;
 
   const resolved: ResolvedConfig = {
     provider,
@@ -380,6 +395,8 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     enabledSkills,
     controlPanelPort,
     logMode,
+    mcpPort,
+    recorderCommand,
     logsDir: resolveLayeredPath(sources, 'logsDir', DEFAULT_CONFIG.logsDir),
     skillsDir: resolveLayeredPath(sources, 'skillsDir', DEFAULT_CONFIG.skillsDir),
     configFilePath,
@@ -421,10 +438,14 @@ function computeValueSources(sources: MergeSources): ConfigValueSources {
     'clipboardRestoreDelayMs',
     'clipboardRetention',
     'injectionMethod',
+    'queueMaxDepth',
+    'prewarm',
     'logMode',
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',
+    'mcpPort',
+    'recorderCommand',
     'logsDir',
     'skillsDir',
   ];
@@ -458,10 +479,14 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
     'clipboardRestoreDelayMs',
     'clipboardRetention',
     'injectionMethod',
+    'queueMaxDepth',
+    'prewarm',
     'logMode',
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',
+    'mcpPort',
+    'recorderCommand',
     'logsDir',
     'skillsDir',
   ];

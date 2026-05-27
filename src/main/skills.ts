@@ -22,8 +22,6 @@ export interface Skill {
 }
 
 const FRONTMATTER_RE = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n([\s\S]*)$/;
-const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-
 function parseFrontmatter(raw: string): { meta: Record<string, string>; body: string } {
   const match = raw.match(FRONTMATTER_RE);
   if (!match) return { meta: {}, body: raw };
@@ -44,6 +42,9 @@ function slugify(name: string): string {
       .slice(0, 64) || 'skill'
   );
 }
+
+/** Matches ids produced by `slugify` and explicit frontmatter `id` values. */
+const SKILL_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 
 export function isValidSkillId(id: string): boolean {
   return SKILL_ID_RE.test(id);

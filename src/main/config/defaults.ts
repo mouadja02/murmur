@@ -15,6 +15,11 @@ Rules:
 const IS_WINDOWS = process.platform === 'win32';
 const WHISPER_CLI_FILENAME = IS_WINDOWS ? 'whisper-cli.exe' : 'whisper-cli';
 
+const DEFAULT_RECORDER_COMMAND =
+  process.platform === 'linux'
+    ? 'arecord -q -f S16_LE -r 16000 -c 1 -t raw'
+    : 'sox -q -d -r 16000 -c 1 -b 16 -e signed-integer -t raw -';
+
 /**
  * Built-in defaults, used when no other source supplies a value.
  * Paths are intentionally relative; they get resolved against `process.cwd()`
@@ -57,6 +62,8 @@ export const DEFAULT_CONFIG: Required<Omit<PartialConfig, 'apiKey' | 'overlay'>>
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   enabledSkills: [],
   controlPanelPort: 7331,
+  mcpPort: 7332,
+  recorderCommand: DEFAULT_RECORDER_COMMAND,
 
   logMode: 'metadata-only' as const,
   logsDir: './logs',

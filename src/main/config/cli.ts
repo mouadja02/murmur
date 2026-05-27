@@ -1,4 +1,4 @@
-import type { PartialConfig } from './schema.js';
+import type { PartialConfig, RunMode } from './schema.js';
 import { sanitizePartial } from './schema.js';
 
 export interface CliResult {
@@ -10,6 +10,8 @@ export interface CliResult {
   printAndExit: boolean;
   /** If true, print --help text and exit 0. */
   helpAndExit: boolean;
+  /** Run mode: GUI overlay (default) or headless MCP server (`serve`). */
+  mode: RunMode;
 }
 
 /**
@@ -41,12 +43,17 @@ export function parseCli(argv: readonly string[]): CliResult {
     configFilePath: null,
     printAndExit: false,
     helpAndExit: false,
+    mode: 'gui',
   };
   const raw: Record<string, string | true> = {};
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (!arg?.startsWith('--')) {
+      if (arg === 'serve') {
+        result.mode = 'serve';
+        continue;
+      }
       if (arg === '-h') raw.help = true;
       continue;
     }
@@ -110,6 +117,17 @@ export function parseCli(argv: readonly string[]): CliResult {
     const n = Number(raw['control-panel-port']);
     if (Number.isFinite(n)) candidate.controlPanelPort = n;
   }
+  if (typeof raw.port === 'string') {
+    const n = Number(raw.port);
+    if (Number.isFinite(n)) candidate.controlPanelPort = n;
+  }
+  if (typeof raw['mcp-port'] === 'string') {
+    const n = Number(raw['mcp-port']);
+    if (Number.isFinite(n)) candidate.mcpPort = n;
+  }
+  if (typeof raw['recorder-command'] === 'string') {
+    candidate.recorderCommand = raw['recorder-command'];
+  }
 
   const overlay: Record<string, unknown> = {};
   if (typeof raw['overlay-anchor'] === 'string') overlay.anchor = raw['overlay-anchor'];
@@ -135,6 +153,8 @@ export const HELP_TEXT = `
 Murmur — voice-first prompt engineering for vibe coders
 
 Usage:
+  murmur [flags]
+  murmur serve [--port <port>] [--mcp-port <port>] [flags]
   pnpm dev -- [flags]
   electron . [flags]
 
@@ -172,6 +192,12 @@ Prompt engineering:
 
 Web control panel:
   --control-panel-port <port>         HTTP port for the control panel (0 = random, default 7331)
+  --port <port>                       Alias for --control-panel-port in serve mode
+
+MCP server mode:
+  serve                                Run without Electron overlay
+  --mcp-port <port>                    Streamable HTTP MCP port (0 = random, default 7332)
+  --recorder-command <command>         Command that emits 16 kHz mono signed 16-bit PCM on stdout
 
 Config file:
   --config <path>                     Override config file location

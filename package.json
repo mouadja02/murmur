@@ -16,6 +16,7 @@
     "skills/",
     "docs/banner.svg",
     "docs/architecture.svg",
+    "docs/integrations/",
     "logo.svg",
     "README.md",
     "LICENSE"
@@ -65,12 +66,14 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@nut-tree-fork/nut-js": "^4.2.6",
     "dotenv": "^17.4.2",
     "electron": "^41.2.1",
     "picocolors": "^1.1.1",
     "prompts": "^2.4.2",
-    "uiohook-napi": "^1.5.5"
+    "uiohook-napi": "^1.5.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",

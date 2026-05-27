@@ -6,8 +6,17 @@ import path from 'node:path';
  * Is `bin` a bare command (just a name, no path separators)?
  * Bare commands are resolved against the system `PATH` at runtime.
  */
-function isBareCommand(bin: string): boolean {
+export function isBareCommand(bin: string): boolean {
   return !bin.includes(path.sep) && !bin.includes('/') && !bin.includes('\\');
+}
+
+/**
+ * Returns true if `commandOrPath` exists on disk or is a bare command on `PATH`.
+ */
+export function commandAvailable(commandOrPath: string): boolean {
+  if (existsSync(commandOrPath)) return true;
+  if (isBareCommand(commandOrPath)) return isOnPath(commandOrPath);
+  return false;
 }
 
 /**
@@ -34,7 +43,5 @@ export function isOnPath(bin: string): boolean {
  * agree on what "installed" means.
  */
 export function whisperCliAvailable(cliPath: string): boolean {
-  if (existsSync(cliPath)) return true;
-  if (isBareCommand(cliPath)) return isOnPath(cliPath);
-  return false;
+  return commandAvailable(cliPath);
 }

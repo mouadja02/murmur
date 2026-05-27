@@ -16,6 +16,7 @@ import {
   IPC_SHOW_CONTEXT_MENU,
   IPC_TOGGLE_RECORDING,
 } from '../shared/ipc.js';
+import { CommandAudioRecorder } from './audio/recorder.js';
 import { printReadyBanner } from './cli/status.js';
 import {
   getProviderConfig,
@@ -27,6 +28,8 @@ import {
 } from './config/index.js';
 import { type ServerHandle, startControlPanelServer } from './control-panel/server.js';
 import { HotkeyService } from './hotkey.js';
+import { pasteAtCursor } from './inject.js';
+import { type McpServerHandle, startMcpServer } from './mcp/server.js';
 import {
   createOverlayWindow,
   hideOverlay,
@@ -51,6 +54,7 @@ let loaded: LoadedConfig | null = null;
 let pipeline: Pipeline | null = null;
 let provider: LlmProvider | null = null;
 let controlPanel: ServerHandle | null = null;
+let mcpServer: McpServerHandle | null = null;
 const hotkey = new HotkeyService();
 const tray = new TrayService();
 
@@ -298,6 +302,26 @@ function rebindHotkeys(): void {
   });
 }
 
+function createMainPipeline(): Pipeline {
+  if (!loaded || !provider) throw new Error('runtime not initialised');
+  const cfg = loaded.resolved;
+  return new Pipeline({
+    cfg,
+    provider,
+    getWindow: () => mainWindow,
+    onStatus: (s) => {
+      let iconState: TrayIconState = 'idle';
+      if (s === 'recording') iconState = 'recording';
+      else if (s === 'transcribing' || s === 'refining' || s === 'injecting') {
+        iconState = 'processing';
+      }
+      tray.setState(iconState);
+    },
+    inject: pasteAtCursor,
+    createRecorder: () => new CommandAudioRecorder({ commandLine: cfg.recorderCommand }),
+  });
+}
+
 function reloadConfigAfterExternalUpdate(): void {
   if (!loaded) return;
   const fresh = loadConfig({ userDataDir: app.getPath('userData') });
@@ -305,18 +329,11 @@ function reloadConfigAfterExternalUpdate(): void {
   loaded.overrides = fresh.overrides;
   provider = createProvider(getProviderConfig(loaded.resolved));
   if (pipeline) {
-    pipeline = new Pipeline({
-      cfg: loaded.resolved,
-      provider,
-      getWindow: () => mainWindow,
-      onStatus: (s) => {
-        let iconState: TrayIconState = 'idle';
-        if (s === 'recording') iconState = 'recording';
-        else if (s === 'transcribing' || s === 'refining' || s === 'injecting')
-          iconState = 'processing';
-        tray.setState(iconState);
-      },
-    });
+    if (pipeline.isBusy()) {
+      console.warn('[murmur] config reload deferred: pipeline is busy (recording or processing)');
+    } else {
+      pipeline = createMainPipeline();
+    }
   }
   rebindHotkeys();
   pushInfoToRenderer();
@@ -360,6 +377,29 @@ async function startPanel(): Promise<void> {
     console.log(`[murmur] control panel: ${controlPanel.url}`);
   } catch (err) {
     console.error('[murmur] could not start control panel server:', err);
+  }
+}
+
+async function startMcp(): Promise<void> {
+  if (!loaded) return;
+  try {
+    mcpServer = await startMcpServer({
+      cfg: loaded.resolved,
+      getConfig: () => {
+        if (!loaded) throw new Error('config not loaded yet');
+        return loaded.resolved;
+      },
+      getPipeline: () => {
+        if (!pipeline) throw new Error('pipeline not initialised');
+        return pipeline;
+      },
+      onConfigUpdated: () => {
+        reloadConfigAfterExternalUpdate();
+      },
+    });
+    console.log(`[murmur] MCP server: ${mcpServer.url}`);
+  } catch (err) {
+    console.error('[murmur] could not start MCP server:', err);
   }
 }
 
@@ -434,18 +474,7 @@ async function bootstrap(): Promise<void> {
     onQuit: () => app.quit(),
     isVisible: () => mainWindow?.isVisible() ?? false,
   });
-  pipeline = new Pipeline({
-    cfg: loaded.resolved,
-    provider,
-    getWindow: () => mainWindow,
-    onStatus: (s) => {
-      let iconState: TrayIconState = 'idle';
-      if (s === 'recording') iconState = 'recording';
-      else if (s === 'transcribing' || s === 'refining' || s === 'injecting')
-        iconState = 'processing';
-      tray.setState(iconState);
-    },
-  });
+  pipeline = createMainPipeline();
 
   setupPositionPersistence(mainWindow);
 
@@ -463,6 +492,7 @@ async function bootstrap(): Promise<void> {
   wireScreenChanges();
   wireProtocolEvents(protocolDeps);
   await startPanel();
+  await startMcp();
   pushInfoToRenderer();
 
   printReadyBanner({
@@ -488,6 +518,7 @@ app.on('before-quit', () => {
   hotkey.shutdown();
   tray.destroy();
   controlPanel?.stop().catch(() => undefined);
+  mcpServer?.stop().catch(() => undefined);
 });
 
 app.on('window-all-closed', () => {
