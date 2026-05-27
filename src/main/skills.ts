@@ -22,8 +22,6 @@ export interface Skill {
 }
 
 const FRONTMATTER_RE = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n([\s\S]*)$/;
-const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-
 function parseFrontmatter(raw: string): { meta: Record<string, string>; body: string } {
   const match = raw.match(FRONTMATTER_RE);
   if (!match) return { meta: {}, body: raw };
@@ -50,6 +48,23 @@ const SKILL_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 
 export function isValidSkillId(id: string): boolean {
   return SKILL_ID_RE.test(id);
+}
+
+function assertValidSkillId(id: string): void {
+  if (!isValidSkillId(id)) {
+    throw new Error(`invalid skill id "${id}"; use 1-64 lowercase letters, numbers, and hyphens`);
+  }
+}
+
+function skillPath(dir: string, id: string): string {
+  assertValidSkillId(id);
+  const root = path.resolve(dir);
+  const filePath = path.resolve(root, `${id}.md`);
+  const relative = path.relative(root, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`invalid skill path for "${id}"`);
+  }
+  return filePath;
 }
 
 function ensureDir(dir: string): void {

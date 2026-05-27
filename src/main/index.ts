@@ -14,9 +14,6 @@ import {
   IPC_RETRY,
   IPC_SET_MOUSE_INTERACTIVE,
   IPC_SHOW_CONTEXT_MENU,
-  IPC_START_RECORDING,
-  IPC_STATUS,
-  IPC_STOP_RECORDING,
   IPC_TOGGLE_RECORDING,
 } from '../shared/ipc.js';
 import { CommandAudioRecorder } from './audio/recorder.js';
@@ -311,9 +308,15 @@ function createMainPipeline(): Pipeline {
   return new Pipeline({
     cfg,
     provider,
-    emitStatus: (s) => mainWindow?.webContents.send(IPC_STATUS, s),
-    requestRendererStart: () => mainWindow?.webContents.send(IPC_START_RECORDING),
-    requestRendererStop: () => mainWindow?.webContents.send(IPC_STOP_RECORDING),
+    getWindow: () => mainWindow,
+    onStatus: (s) => {
+      let iconState: TrayIconState = 'idle';
+      if (s === 'recording') iconState = 'recording';
+      else if (s === 'transcribing' || s === 'refining' || s === 'injecting') {
+        iconState = 'processing';
+      }
+      tray.setState(iconState);
+    },
     inject: pasteAtCursor,
     createRecorder: () => new CommandAudioRecorder({ commandLine: cfg.recorderCommand }),
   });
@@ -458,6 +461,19 @@ async function bootstrap(): Promise<void> {
   }
 
   mainWindow = createOverlayWindow(loaded.resolved);
+  tray.create({
+    onShow: () => {
+      if (mainWindow) showOverlay(mainWindow);
+      tray.setVisibility(true);
+    },
+    onHide: () => {
+      if (mainWindow) hideOverlay(mainWindow);
+      tray.setVisibility(false);
+    },
+    onPanel: openControlPanelExternal,
+    onQuit: () => app.quit(),
+    isVisible: () => mainWindow?.isVisible() ?? false,
+  });
   pipeline = createMainPipeline();
 
   setupPositionPersistence(mainWindow);

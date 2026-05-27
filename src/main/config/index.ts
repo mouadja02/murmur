@@ -17,6 +17,9 @@ export { HELP_TEXT } from './cli.js';
 export { DEFAULT_CONFIG, DEFAULT_SYSTEM_PROMPT } from './defaults.js';
 export { updateConfigFile } from './file.js';
 export type {
+  ClipboardRetention,
+  InjectionMethod,
+  LogMode,
   OverlayAnchor,
   OverlayPosition,
   PartialConfig,
@@ -191,10 +194,6 @@ export type ConfigOverrides = Partial<Record<keyof ResolvedConfig, 'cli' | 'env'
 export type ConfigValueSource = 'cli' | 'file' | 'env' | 'default';
 export type ConfigValueSources = Partial<Record<keyof ResolvedConfig, ConfigValueSource>>;
 
-export type ConfigValueSource = 'cli' | 'file' | 'env' | 'default';
-
-export type ConfigValueSources = Partial<Record<keyof ResolvedConfig, ConfigValueSource>>;
-
 export interface LoadedConfig {
   resolved: ResolvedConfig;
   cli: CliResult;
@@ -355,6 +354,9 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       sources.file.controlPanelPort,
       sources.env.controlPanelPort,
     ) ?? DEFAULT_CONFIG.controlPanelPort;
+  const logMode =
+    pickFirst(sources.cli.logMode, sources.file.logMode, sources.env.logMode) ??
+    DEFAULT_CONFIG.logMode;
   const mcpPort =
     pickFirst(sources.cli.mcpPort, sources.file.mcpPort, sources.env.mcpPort) ??
     DEFAULT_CONFIG.mcpPort;
@@ -392,6 +394,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     systemPrompt,
     enabledSkills,
     controlPanelPort,
+    logMode,
     mcpPort,
     recorderCommand,
     logsDir: resolveLayeredPath(sources, 'logsDir', DEFAULT_CONFIG.logsDir),
@@ -435,10 +438,14 @@ function computeValueSources(sources: MergeSources): ConfigValueSources {
     'clipboardRestoreDelayMs',
     'clipboardRetention',
     'injectionMethod',
+    'queueMaxDepth',
+    'prewarm',
     'logMode',
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',
+    'mcpPort',
+    'recorderCommand',
     'logsDir',
     'skillsDir',
   ];
@@ -472,6 +479,8 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
     'clipboardRestoreDelayMs',
     'clipboardRetention',
     'injectionMethod',
+    'queueMaxDepth',
+    'prewarm',
     'logMode',
     'systemPrompt',
     'enabledSkills',
@@ -486,40 +495,6 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
   for (const key of fields) {
     if (cli[key] !== undefined && cli[key] !== null) out[key] = 'cli';
     else if (env[key] !== undefined && env[key] !== null) out[key] = 'env';
-  }
-  return out;
-}
-
-function computeValueSources(sources: MergeSources): ConfigValueSources {
-  const out: ConfigValueSources = {};
-  const fields: (keyof ResolvedConfig)[] = [
-    'provider',
-    'baseUrl',
-    'model',
-    'apiKey',
-    'temperature',
-    'whisperCliPath',
-    'whisperModelPath',
-    'sampleRate',
-    'hotkeyCombo',
-    'toggleHotkeyCombo',
-    'clipboardRestoreDelayMs',
-    'systemPrompt',
-    'enabledSkills',
-    'controlPanelPort',
-    'mcpPort',
-    'recorderCommand',
-    'logsDir',
-    'skillsDir',
-  ];
-  const cli = sources.cli as Record<string, unknown>;
-  const file = sources.file as Record<string, unknown>;
-  const env = sources.env as Record<string, unknown>;
-  for (const key of fields) {
-    if (cli[key] !== undefined && cli[key] !== null) out[key] = 'cli';
-    else if (file[key] !== undefined && file[key] !== null) out[key] = 'file';
-    else if (env[key] !== undefined && env[key] !== null) out[key] = 'env';
-    else out[key] = 'default';
   }
   return out;
 }
