@@ -44,6 +44,13 @@ function slugify(name: string): string {
   );
 }
 
+/** Matches ids produced by `slugify` and explicit frontmatter `id` values. */
+const SKILL_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+
+export function isValidSkillId(id: string): boolean {
+  return SKILL_ID_RE.test(id);
+}
+
 function ensureDir(dir: string): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }

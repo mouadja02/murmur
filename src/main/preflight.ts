@@ -1,13 +1,18 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { splitCommandLine } from './audio/command.js';
 import type { ResolvedConfig } from './config/index.js';
-import { whisperCliAvailable } from './platform.js';
+import { commandAvailable, whisperCliAvailable } from './platform.js';
 import type { LlmProvider } from './providers/index.js';
 
 export interface PreflightResult {
   ok: boolean;
   messages: string[];
+}
+
+export interface PreflightOptions {
+  requireRecorder?: boolean;
 }
 
 /** The right `setup:whisper` invocation depending on how the user installed murmur. */
@@ -23,6 +28,7 @@ function setupHint(): string {
 export async function runPreflight(
   cfg: ResolvedConfig,
   provider: LlmProvider,
+  opts: PreflightOptions = {},
 ): Promise<PreflightResult> {
   const errors: string[] = [];
 
@@ -43,6 +49,21 @@ export async function runPreflight(
         `  Fix: ${setupHint()}\n` +
         `       or set --whisper-model / WHISPER_MODEL_PATH to an existing .bin file`,
     );
+  }
+
+  if (opts.requireRecorder) {
+    try {
+      const [recorderBin] = splitCommandLine(cfg.recorderCommand);
+      if (!commandAvailable(recorderBin)) {
+        errors.push(
+          `headless recorder command not found: ${recorderBin}.\n` +
+            `  Fix: install SoX on Windows/macOS or alsa-utils on Linux,\n` +
+            `       or set --recorder-command / MURMUR_RECORDER_COMMAND`,
+        );
+      }
+    } catch (err) {
+      errors.push(`invalid recorder command: ${(err as Error).message}`);
+    }
   }
 
   return { ok: errors.length === 0, messages: errors };

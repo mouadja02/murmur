@@ -93,7 +93,51 @@ pnpm setup:whisper
 pnpm dev
 ```
 
-All three options drop you in the same place. The first run creates a config file at `%APPDATA%\murmur\config.json` (Windows), `~/Library/Application Support/murmur/config.json` (macOS), or `~/.config/murmur/config.json` (Linux), with sensible defaults, and prints a banner in the terminal. Grab the **control panel URL** it shows (default `http://localhost:7331`) to tweak things in a browser without touching JSON.
+Options A-C drop you in the same overlay flow. The first run creates a config file at `%APPDATA%\murmur\config.json` (Windows), `~/Library/Application Support/murmur/config.json` (macOS), or `~/.config/murmur/config.json` (Linux), with sensible defaults, and prints a banner in the terminal. Grab the **control panel URL** it shows (default `http://localhost:7331`) to tweak things in a browser without touching JSON.
+
+### Option D — MCP server mode (headless, no overlay)
+
+Run Murmur as a local MCP server for Cursor, Claude Code, VS Code Copilot, or any Streamable HTTP MCP client:
+
+```bash
+murmur serve --port 7331 --mcp-port 7332
+```
+
+| Service | URL |
+| --- | --- |
+| Control panel | `http://127.0.0.1:7331` |
+| MCP (Streamable HTTP) | `http://127.0.0.1:7332/mcp` |
+
+**Headless recording** uses a local command, not the Electron overlay mic:
+
+- **Windows / macOS:** [SoX](http://sox.sourceforge.net/) (`sox` on `PATH`)
+- **Linux:** ALSA utils (`arecord` on `PATH`)
+
+Override with `--recorder-command` or `MURMUR_RECORDER_COMMAND` if needed.
+
+If startup fails with `headless recorder command not found: sox`, install SoX and restart your terminal:
+
+```powershell
+winget install --id ChrisBagwell.SoX -e
+sox --version
+```
+
+If `sox --version` still fails, add the SoX install folder to `PATH` or pass the full executable path with `--recorder-command`.
+
+If `winget` says SoX is already installed but `sox --version` still fails, the portable install may be incomplete or not linked into `PATH`. Remove and reinstall it, then verify again:
+
+```powershell
+winget uninstall --id ChrisBagwell.SoX -e
+winget install --id ChrisBagwell.SoX -e
+sox --version
+```
+
+**Integration guides:**
+
+- [Cursor](docs/integrations/cursor.md) — `.cursor/mcp.json`
+- [Claude Code](docs/integrations/claude-code.md) — `.mcp.json` / `claude mcp add`
+- [VS Code Copilot](docs/integrations/vscode-copilot.md) — `.vscode/mcp.json`
+- [Shell / generic MCP clients](docs/integrations/shell.md) — endpoint, tools, MCP Inspector
 
 > **Linux runtime deps.** The overlay's global hotkeys + paste injection use `uiohook-napi` + `@nut-tree-fork/nut-js`, which link against X11 at runtime. On Ubuntu/Debian:
 >
@@ -146,6 +190,7 @@ Every session gets a timestamped folder under `logs/` with the WAV, the raw tran
 - **Provider agnostic** — Ollama native API, any OpenAI-compatible server (LM Studio, llama.cpp server, vLLM, Jan, KoboldCpp, oobabooga, …), and Anthropic Claude.
 - **100 % local by default** — no telemetry, no outbound network calls except to the LLM server you configured.
 - **Session logs** — every run writes audio + timings + prompts to `logs/<timestamp>/` for full traceability.
+- **MCP server mode** — `murmur serve` exposes Streamable HTTP tools (`murmur_record`, `murmur_transcribe`, `murmur_refine`, skills) for IDE agents without launching Electron.
 
 ---
 
@@ -343,6 +388,10 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 | `--enabled-skills <a,b,c>` | Comma-separated skill IDs to force-enable for this launch |
 | `--system-prompt <text>` | Override the active system prompt (skills still layer on top) |
 | `--control-panel-port <n>` | Control-panel port (default `7331`; `0` = pick free) |
+| `serve` | Headless mode: control panel + MCP server, no Electron overlay |
+| `--port <n>` | Alias for `--control-panel-port` in `serve` mode |
+| `--mcp-port <n>` | MCP Streamable HTTP port (default `7332`; `0` = pick free) |
+| `--recorder-command <cmd>` | Headless mic command (16 kHz mono S16 LE PCM on stdout) |
 | `--overlay-anchor <bottom-center \| bottom-right \| top-right \| free>` | Docking corner |
 | `--overlay-offset-x <px>` / `--overlay-offset-y <px>` | Offset from the anchor |
 | `--overlay-position <x,y>` | Force a free-floating position |
@@ -388,7 +437,9 @@ Auto-created on first run, under the OS user-data dir:
   "skillsDir": "./skills",
   "systemPrompt": "You refine a raw voice transcription …",
   "enabledSkills": [],
-  "controlPanelPort": 7331
+  "controlPanelPort": 7331,
+  "mcpPort": 7332,
+  "recorderCommand": "sox -q -d -r 16000 -c 1 -b 16 -e signed-integer -t raw -"
 }
 ```
 
@@ -417,6 +468,8 @@ Environment variables have lower precedence than CLI flags but higher than the c
 | `MURMUR_SYSTEM_PROMPT` | `systemPrompt` |
 | `MURMUR_ENABLED_SKILLS` | `enabledSkills` (comma-separated) |
 | `MURMUR_CONTROL_PANEL_PORT` | `controlPanelPort` |
+| `MURMUR_MCP_PORT` | `mcpPort` |
+| `MURMUR_RECORDER_COMMAND` | `recorderCommand` |
 
 Create a `.env` file in the project root to set them for `pnpm dev`. Any field set this way will appear **locked** in the control panel with an env-var badge (e.g. `Locked by LLM_MODEL env var`). Remove or comment out the line and restart to unlock it.
 

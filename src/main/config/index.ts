@@ -10,7 +10,13 @@ import type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } fr
 export { HELP_TEXT } from './cli.js';
 export { DEFAULT_CONFIG, DEFAULT_SYSTEM_PROMPT } from './defaults.js';
 export { updateConfigFile } from './file.js';
-export type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
+export type {
+  OverlayAnchor,
+  OverlayPosition,
+  PartialConfig,
+  ResolvedConfig,
+  RunMode,
+} from './schema.js';
 
 /**
  * Mirrors Electron's `app.getPath('userData')` for the "murmur" app name so
@@ -64,6 +70,11 @@ function readEnv(): PartialConfig {
     const n = Number(e.MURMUR_CONTROL_PANEL_PORT);
     if (Number.isFinite(n)) partial.controlPanelPort = n;
   }
+  if (e.MURMUR_MCP_PORT) {
+    const n = Number(e.MURMUR_MCP_PORT);
+    if (Number.isFinite(n)) partial.mcpPort = n;
+  }
+  if (e.MURMUR_RECORDER_COMMAND) partial.recorderCommand = e.MURMUR_RECORDER_COMMAND;
 
   return partial;
 }
@@ -152,12 +163,17 @@ function resolveLayeredPath(
  */
 export type ConfigOverrides = Partial<Record<keyof ResolvedConfig, 'cli' | 'env'>>;
 
+export type ConfigValueSource = 'cli' | 'file' | 'env' | 'default';
+
+export type ConfigValueSources = Partial<Record<keyof ResolvedConfig, ConfigValueSource>>;
+
 export interface LoadedConfig {
   resolved: ResolvedConfig;
   cli: CliResult;
   configFileExisted: boolean;
   configFileWritten: boolean;
   overrides: ConfigOverrides;
+  valueSources: ConfigValueSources;
 }
 
 export interface LoadConfigOptions {
@@ -287,6 +303,15 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       sources.file.controlPanelPort,
       sources.env.controlPanelPort,
     ) ?? DEFAULT_CONFIG.controlPanelPort;
+  const mcpPort =
+    pickFirst(sources.cli.mcpPort, sources.file.mcpPort, sources.env.mcpPort) ??
+    DEFAULT_CONFIG.mcpPort;
+  const recorderCommand =
+    pickFirst(
+      sources.cli.recorderCommand,
+      sources.file.recorderCommand,
+      sources.env.recorderCommand,
+    ) ?? DEFAULT_CONFIG.recorderCommand;
 
   const resolved: ResolvedConfig = {
     provider,
@@ -311,6 +336,8 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     systemPrompt,
     enabledSkills,
     controlPanelPort,
+    mcpPort,
+    recorderCommand,
     logsDir: resolveLayeredPath(sources, 'logsDir', DEFAULT_CONFIG.logsDir),
     skillsDir: resolveLayeredPath(sources, 'skillsDir', DEFAULT_CONFIG.skillsDir),
     configFilePath,
@@ -322,6 +349,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     configFileExisted: fileLoad.existed,
     configFileWritten: written,
     overrides: computeOverrides(sources),
+    valueSources: computeValueSources(sources),
   };
 }
 
@@ -350,6 +378,8 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',
+    'mcpPort',
+    'recorderCommand',
     'logsDir',
     'skillsDir',
   ];
@@ -358,6 +388,40 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
   for (const key of fields) {
     if (cli[key] !== undefined && cli[key] !== null) out[key] = 'cli';
     else if (env[key] !== undefined && env[key] !== null) out[key] = 'env';
+  }
+  return out;
+}
+
+function computeValueSources(sources: MergeSources): ConfigValueSources {
+  const out: ConfigValueSources = {};
+  const fields: (keyof ResolvedConfig)[] = [
+    'provider',
+    'baseUrl',
+    'model',
+    'apiKey',
+    'temperature',
+    'whisperCliPath',
+    'whisperModelPath',
+    'sampleRate',
+    'hotkeyCombo',
+    'toggleHotkeyCombo',
+    'clipboardRestoreDelayMs',
+    'systemPrompt',
+    'enabledSkills',
+    'controlPanelPort',
+    'mcpPort',
+    'recorderCommand',
+    'logsDir',
+    'skillsDir',
+  ];
+  const cli = sources.cli as Record<string, unknown>;
+  const file = sources.file as Record<string, unknown>;
+  const env = sources.env as Record<string, unknown>;
+  for (const key of fields) {
+    if (cli[key] !== undefined && cli[key] !== null) out[key] = 'cli';
+    else if (file[key] !== undefined && file[key] !== null) out[key] = 'file';
+    else if (env[key] !== undefined && env[key] !== null) out[key] = 'env';
+    else out[key] = 'default';
   }
   return out;
 }

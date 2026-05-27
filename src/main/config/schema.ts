@@ -1,5 +1,7 @@
 import type { ProviderId } from '../providers/index.js';
 
+export type RunMode = 'gui' | 'serve';
+
 export type OverlayAnchor = 'bottom-center' | 'bottom-right' | 'top-right' | 'free';
 
 export interface OverlayPosition {
@@ -50,6 +52,12 @@ export interface ResolvedConfig {
   /** 0 picks a random free port at startup. */
   controlPanelPort: number;
 
+  // MCP server mode
+  /** 0 picks a random free port at startup. */
+  mcpPort: number;
+  /** Shell command that emits 16 kHz mono signed 16-bit PCM on stdout. */
+  recorderCommand: string;
+
   // Paths
   logsDir: string;
   skillsDir: string;
@@ -86,6 +94,8 @@ export interface PartialConfig {
   systemPrompt?: string;
   enabledSkills?: string[];
   controlPanelPort?: number;
+  mcpPort?: number;
+  recorderCommand?: string;
 
   logsDir?: string;
   skillsDir?: string;
@@ -165,6 +175,12 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
     obj.controlPanelPort <= 65535
   ) {
     out.controlPanelPort = Math.floor(obj.controlPanelPort);
+  }
+  if (isNumber(obj.mcpPort) && obj.mcpPort >= 0 && obj.mcpPort <= 65535) {
+    out.mcpPort = Math.floor(obj.mcpPort);
+  }
+  if (isString(obj.recorderCommand) && obj.recorderCommand.trim()) {
+    out.recorderCommand = obj.recorderCommand.trim();
   }
 
   return out;
