@@ -18,6 +18,8 @@ function makeFakeConfig(overrides = {}) {
     hotkeyCombo: 'Ctrl+Shift+Space',
     toggleHotkeyCombo: 'Ctrl+Shift+H',
     clipboardRestoreDelayMs: 150,
+    clipboardRetention: 'keep-generated',
+    injectionMethod: 'auto',
     systemPrompt: 'BASE PROMPT',
     enabledSkills: [],
     controlPanelPort: 0,
@@ -106,11 +108,102 @@ describe('control-panel server', () => {
       testLlm: async () => ({ ok: false, message: 'connection refused', latencyMs: 7 }),
     });
 
-    const res = await fetch(`${handle.url}/api/test/llm`, { method: 'POST' });
+    const token = (await (await fetch(`${handle.url}/api/state`)).json()).security.csrfToken;
+    const res = await fetch(`${handle.url}/api/test/llm`, {
+      method: 'POST',
+      headers: { 'X-Murmur-Token': token },
+    });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ok, false);
     assert.equal(body.message, 'connection refused');
     assert.equal(body.latencyMs, 7);
+  });
+
+  it('does not allow cross-origin reads or wildcard CORS', async () => {
+    const cfg = makeFakeConfig({ skillsDir: tempDir });
+    handle = await startControlPanelServer({
+      getCurrentConfig: () => cfg,
+      onConfigUpdated: () => {},
+      testLlm: async () => ({ ok: true, message: 'mocked' }),
+    });
+
+    const sameOrigin = await fetch(`${handle.url}/api/state`);
+    assert.equal(sameOrigin.headers.get('access-control-allow-origin'), null);
+
+    const crossOrigin = await fetch(`${handle.url}/api/state`, {
+      headers: { Origin: 'https://evil.example' },
+    });
+    assert.equal(crossOrigin.status, 403);
+  });
+
+  it('requires the per-session token for state-changing API calls', async () => {
+    const cfg = makeFakeConfig({ skillsDir: tempDir });
+    let tested = false;
+    handle = await startControlPanelServer({
+      getCurrentConfig: () => cfg,
+      onConfigUpdated: () => {},
+      testLlm: async () => {
+        tested = true;
+        return { ok: true, message: 'mocked' };
+      },
+    });
+
+    const missingToken = await fetch(`${handle.url}/api/test/llm`, { method: 'POST' });
+    assert.equal(missingToken.status, 403);
+    assert.equal(tested, false);
+
+    const state = await (await fetch(`${handle.url}/api/state`)).json();
+    const withToken = await fetch(`${handle.url}/api/test/llm`, {
+      method: 'POST',
+      headers: { 'X-Murmur-Token': state.security.csrfToken },
+    });
+    assert.equal(withToken.status, 200);
+    assert.equal(tested, true);
+  });
+
+  it('rejects side-effectful overlay GET routes', async () => {
+    const cfg = makeFakeConfig({ skillsDir: tempDir });
+    let shown = false;
+    handle = await startControlPanelServer({
+      getCurrentConfig: () => cfg,
+      onConfigUpdated: () => {},
+      testLlm: async () => ({ ok: true, message: 'mocked' }),
+      showOverlay: () => {
+        shown = true;
+      },
+    });
+
+    const res = await fetch(`${handle.url}/overlay/show`);
+    assert.equal(res.status, 405);
+    assert.equal(shown, false);
+  });
+
+  it('rejects traversal-style skill ids through the API', async () => {
+    const cfg = makeFakeConfig({ skillsDir: tempDir });
+    handle = await startControlPanelServer({
+      getCurrentConfig: () => cfg,
+      onConfigUpdated: () => {},
+      testLlm: async () => ({ ok: true, message: 'mocked' }),
+    });
+
+    const state = await (await fetch(`${handle.url}/api/state`)).json();
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Murmur-Token': state.security.csrfToken,
+    };
+
+    const create = await fetch(`${handle.url}/api/skills`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ id: '../evil', name: 'evil', content: 'nope' }),
+    });
+    assert.equal(create.status, 400);
+
+    const del = await fetch(`${handle.url}/api/skills/%2e%2e%2fevil`, {
+      method: 'DELETE',
+      headers,
+    });
+    assert.equal(del.status, 400);
   });
 });

@@ -5,7 +5,13 @@ import { PROVIDER_PRESETS, type ProviderConfig } from '../providers/index.js';
 import { type CliResult, parseCli } from './cli.js';
 import { DEFAULT_CONFIG } from './defaults.js';
 import { readConfigFile, writeDefaultConfigIfMissing } from './file.js';
-import type { OverlayAnchor, OverlayPosition, PartialConfig, ResolvedConfig } from './schema.js';
+import {
+  type OverlayAnchor,
+  type OverlayPosition,
+  type PartialConfig,
+  type ResolvedConfig,
+  sanitizePartial,
+} from './schema.js';
 
 export { HELP_TEXT } from './cli.js';
 export { DEFAULT_CONFIG, DEFAULT_SYSTEM_PROMPT } from './defaults.js';
@@ -58,7 +64,27 @@ function readEnv(): PartialConfig {
   if (e.WHISPER_MODEL_PATH) partial.whisperModelPath = e.WHISPER_MODEL_PATH;
   if (e.MURMUR_HOTKEY) partial.hotkeyCombo = e.MURMUR_HOTKEY;
   if (e.MURMUR_TOGGLE_HOTKEY) partial.toggleHotkeyCombo = e.MURMUR_TOGGLE_HOTKEY;
+  if (e.MURMUR_CLIPBOARD_RESTORE_DELAY_MS) {
+    const n = Number(e.MURMUR_CLIPBOARD_RESTORE_DELAY_MS);
+    if (Number.isFinite(n)) partial.clipboardRestoreDelayMs = n;
+  }
+  if (
+    e.MURMUR_CLIPBOARD_RETENTION === 'keep-generated' ||
+    e.MURMUR_CLIPBOARD_RETENTION === 'restore-previous'
+  ) {
+    partial.clipboardRetention = e.MURMUR_CLIPBOARD_RETENTION;
+  }
+  if (
+    e.MURMUR_INJECTION_METHOD === 'clipboard' ||
+    e.MURMUR_INJECTION_METHOD === 'type' ||
+    e.MURMUR_INJECTION_METHOD === 'auto'
+  ) {
+    partial.injectionMethod = e.MURMUR_INJECTION_METHOD;
+  }
   if (e.MURMUR_LOGS_DIR) partial.logsDir = e.MURMUR_LOGS_DIR;
+  if (e.MURMUR_LOG_MODE === 'metadata-only' || e.MURMUR_LOG_MODE === 'full') {
+    partial.logMode = e.MURMUR_LOG_MODE;
+  }
   if (e.MURMUR_SKILLS_DIR) partial.skillsDir = e.MURMUR_SKILLS_DIR;
   if (e.MURMUR_SYSTEM_PROMPT) partial.systemPrompt = e.MURMUR_SYSTEM_PROMPT;
   if (e.MURMUR_ENABLED_SKILLS) {
@@ -76,7 +102,7 @@ function readEnv(): PartialConfig {
   }
   if (e.MURMUR_RECORDER_COMMAND) partial.recorderCommand = e.MURMUR_RECORDER_COMMAND;
 
-  return partial;
+  return sanitizePartial(partial, 'env');
 }
 
 function pickFirst<T>(...candidates: (T | null | undefined)[]): T | undefined {
@@ -162,6 +188,8 @@ function resolveLayeredPath(
  * persist edits to it.
  */
 export type ConfigOverrides = Partial<Record<keyof ResolvedConfig, 'cli' | 'env'>>;
+export type ConfigValueSource = 'cli' | 'file' | 'env' | 'default';
+export type ConfigValueSources = Partial<Record<keyof ResolvedConfig, ConfigValueSource>>;
 
 export type ConfigValueSource = 'cli' | 'file' | 'env' | 'default';
 
@@ -193,6 +221,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
   const configFilePath = path.resolve(
     cli.configFilePath ?? path.join(opts.userDataDir, 'config.json'),
   );
+  const env = readEnv();
 
   let fileLoad = readConfigFile(configFilePath);
   let written = false;
@@ -208,7 +237,7 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     const cwdBase = process.cwd();
     const userDataDir = path.dirname(configFilePath);
     const IS_WINDOWS = process.platform === 'win32';
-    const seedDefaults = {
+    const seedDefaults: Record<string, unknown> = {
       ...DEFAULT_CONFIG,
       whisperCliPath: IS_WINDOWS
         ? path.resolve(cwdBase, DEFAULT_CONFIG.whisperCliPath)
@@ -219,6 +248,13 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       logsDir: path.resolve(cwdBase, DEFAULT_CONFIG.logsDir),
       skillsDir: path.resolve(userDataDir, 'skills'),
     };
+    // Do not persist built-in LLM defaults into a fresh config. Leaving these
+    // fields absent lets env vars keep working and lets first-run setup know the
+    // user has not explicitly chosen provider settings yet.
+    delete seedDefaults.provider;
+    delete seedDefaults.baseUrl;
+    delete seedDefaults.model;
+    delete seedDefaults.apiKey;
     written = writeDefaultConfigIfMissing(configFilePath, seedDefaults);
     if (written) fileLoad = readConfigFile(configFilePath);
   } else if (process.platform !== 'win32' && fileLoad.partial.whisperCliPath) {
@@ -249,8 +285,6 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       };
     }
   }
-
-  const env = readEnv();
 
   const sources: MergeSources = {
     cli: cli.partial,
@@ -288,6 +322,24 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       sources.file.clipboardRestoreDelayMs,
       sources.env.clipboardRestoreDelayMs,
     ) ?? DEFAULT_CONFIG.clipboardRestoreDelayMs;
+  const clipboardRetention =
+    pickFirst(
+      sources.cli.clipboardRetention,
+      sources.file.clipboardRetention,
+      sources.env.clipboardRetention,
+    ) ?? DEFAULT_CONFIG.clipboardRetention;
+  const injectionMethod =
+    pickFirst(
+      sources.cli.injectionMethod,
+      sources.file.injectionMethod,
+      sources.env.injectionMethod,
+    ) ?? DEFAULT_CONFIG.injectionMethod;
+  const queueMaxDepth =
+    pickFirst(sources.cli.queueMaxDepth, sources.file.queueMaxDepth, sources.env.queueMaxDepth) ??
+    DEFAULT_CONFIG.queueMaxDepth;
+  const prewarm =
+    pickFirst(sources.cli.prewarm, sources.file.prewarm, sources.env.prewarm) ??
+    DEFAULT_CONFIG.prewarm;
 
   const overlay = mergeOverlay(sources);
 
@@ -329,6 +381,10 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
     hotkeyCombo,
     toggleHotkeyCombo,
     clipboardRestoreDelayMs,
+    clipboardRetention,
+    injectionMethod,
+    queueMaxDepth,
+    prewarm,
     overlayAnchor: overlay.anchor,
     overlayOffsetX: overlay.offsetX,
     overlayOffsetY: overlay.offsetY,
@@ -353,6 +409,45 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
   };
 }
 
+function sourceOf(sources: MergeSources, key: keyof PartialConfig): ConfigValueSource {
+  const cli = sources.cli as Record<string, unknown>;
+  const file = sources.file as Record<string, unknown>;
+  const env = sources.env as Record<string, unknown>;
+  if (cli[key] !== undefined && cli[key] !== null) return 'cli';
+  if (file[key] !== undefined && file[key] !== null) return 'file';
+  if (env[key] !== undefined && env[key] !== null) return 'env';
+  return 'default';
+}
+
+function computeValueSources(sources: MergeSources): ConfigValueSources {
+  const out: ConfigValueSources = {};
+  const fields: (keyof PartialConfig)[] = [
+    'provider',
+    'baseUrl',
+    'model',
+    'apiKey',
+    'temperature',
+    'whisperCliPath',
+    'whisperModelPath',
+    'sampleRate',
+    'hotkeyCombo',
+    'toggleHotkeyCombo',
+    'clipboardRestoreDelayMs',
+    'clipboardRetention',
+    'injectionMethod',
+    'logMode',
+    'systemPrompt',
+    'enabledSkills',
+    'controlPanelPort',
+    'logsDir',
+    'skillsDir',
+  ];
+  for (const key of fields) {
+    out[key as keyof ResolvedConfig] = sourceOf(sources, key);
+  }
+  return out;
+}
+
 /**
  * For each resolved field, record whether its current value is being pinned by
  * a CLI flag or environment variable.  Anything not in the returned map is
@@ -375,6 +470,9 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
     'hotkeyCombo',
     'toggleHotkeyCombo',
     'clipboardRestoreDelayMs',
+    'clipboardRetention',
+    'injectionMethod',
+    'logMode',
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',

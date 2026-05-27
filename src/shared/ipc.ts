@@ -16,6 +16,13 @@ export const IPC_END_WINDOW_DRAG = 'murmur:end-window-drag';
 export const IPC_OPEN_CONTROL_PANEL = 'murmur:open-control-panel';
 export const IPC_QUIT = 'murmur:quit';
 
+// main → renderer
+export const IPC_QUEUE_DEPTH = 'murmur:queue-depth'; // payload: number
+export const IPC_ERROR = 'murmur:error'; // payload: ErrorPayload
+// renderer → main
+export const IPC_RETRY = 'murmur:retry';
+export const IPC_OPEN_LOG_DIR = 'murmur:open-log-dir'; // payload: string
+
 export type Status =
   | 'idle'
   | 'recording'
@@ -23,7 +30,8 @@ export type Status =
   | 'refining'
   | 'injecting'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'queue-full';
 
 /**
  * Snapshot of public-safe runtime info that the renderer is allowed to see.
@@ -38,4 +46,9 @@ export interface InfoPayload {
   toggleHotkeyCombo: string;
   configFilePath: string;
   controlPanelUrl: string;
+}
+
+export interface ErrorPayload {
+  message: string;
+  sessionDir: string;
 }

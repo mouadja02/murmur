@@ -27,13 +27,45 @@ describe('sanitizePartial', () => {
     assert.equal('bogusField' in out, false);
   });
 
+  it('accepts only http and https provider base URLs', () => {
+    assert.equal(
+      sanitizePartial({ baseUrl: 'http://localhost:11434' }, 'test').baseUrl,
+      'http://localhost:11434',
+    );
+    assert.equal(
+      sanitizePartial({ baseUrl: 'https://api.example.com/v1' }, 'test').baseUrl,
+      'https://api.example.com/v1',
+    );
+    assert.equal(sanitizePartial({ baseUrl: 'file:///tmp/socket' }, 'test').baseUrl, undefined);
+    assert.equal(sanitizePartial({ baseUrl: 'not a url' }, 'test').baseUrl, undefined);
+  });
+
+  it('validates clipboard retention and log mode enums', () => {
+    const out = sanitizePartial(
+      { clipboardRetention: 'keep-generated', logMode: 'metadata-only' },
+      'test',
+    );
+    assert.equal(out.clipboardRetention, 'keep-generated');
+    assert.equal(out.logMode, 'metadata-only');
+
+    const rejected = sanitizePartial(
+      { clipboardRetention: 'discard', logMode: 'everything' },
+      'test',
+    );
+    assert.equal(rejected.clipboardRetention, undefined);
+    assert.equal(rejected.logMode, undefined);
+  });
+
   it('rejects an unknown provider value', () => {
     const out = sanitizePartial({ provider: 'not-a-provider' }, 'test');
     assert.equal(out.provider, undefined);
   });
 
-  it('filters enabledSkills to strings only', () => {
-    const out = sanitizePartial({ enabledSkills: ['a', 1, 'b', null, 'c'] }, 'test');
+  it('filters enabledSkills to valid skill ids only', () => {
+    const out = sanitizePartial(
+      { enabledSkills: ['a', 1, 'b', null, 'c', '../evil', 'UPPER'] },
+      'test',
+    );
     assert.deepEqual(out.enabledSkills, ['a', 'b', 'c']);
   });
 

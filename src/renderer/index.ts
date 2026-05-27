@@ -19,6 +19,10 @@ declare global {
       endWindowDrag: () => void;
       openControlPanel: () => void;
       quit: () => void;
+      onQueueDepth: (cb: (depth: number) => void) => void;
+      onError: (cb: (payload: { message: string; sessionDir: string }) => void) => void;
+      retry: () => void;
+      openLogDir: (dir: string) => void;
     };
   }
 }
@@ -42,6 +46,7 @@ const STATES = [
   'injecting',
   'done',
   'error',
+  'queue-full',
 ] as const;
 
 type StateName = (typeof STATES)[number];
@@ -54,7 +59,10 @@ const STATE_LABELS: Record<StateName, string> = {
   injecting: 'Pasting\u2026',
   done: 'Done',
   error: 'Error',
+  'queue-full': 'Queue full',
 };
+
+let currentState: StateName = 'idle';
 
 function required<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -67,15 +75,24 @@ const logoWrap = required<HTMLSpanElement>('logo-wrap');
 const barsEl = required<HTMLDivElement>('bars');
 const statusChip = required<HTMLDivElement>('status-chip');
 const infoTooltip = required<HTMLDivElement>('info-tooltip');
+const queueBadge = required<HTMLDivElement>('queue-badge');
+const errorToast = required<HTMLDivElement>('error-toast');
+const errorMsgEl = required<HTMLSpanElement>('error-message');
+const retryBtn = required<HTMLButtonElement>('retry-btn');
+const logBtn = required<HTMLButtonElement>('log-btn');
+const dismissBtn = required<HTMLButtonElement>('dismiss-btn');
 
 logoWrap.innerHTML = LOGO_SVG;
 
 const soundbar = createSoundbar(barsEl);
+let latestInfo: InfoView | null = null;
 
 function setState(state: StateName): void {
+  currentState = state;
   for (const s of STATES) overlay.classList.remove(`state-${s}`);
   overlay.classList.add(`state-${state}`);
   statusChip.textContent = STATE_LABELS[state];
+  if (latestInfo) renderInfoTooltip(latestInfo);
 
   if (state === 'recording') {
     overlay.classList.add('expanded');
@@ -89,12 +106,68 @@ function setState(state: StateName): void {
   }
 }
 
+function div(className: string, text?: string): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function compactUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    const path = url.pathname === '/' ? '' : url.pathname;
+    return `${url.host}${path}`;
+  } catch {
+    return value;
+  }
+}
+
+function keyChip(text: string): HTMLSpanElement {
+  const el = document.createElement('span');
+  el.className = 'tooltip-key';
+  el.textContent = text;
+  return el;
+}
+
+function tooltipRow(label: string, value: string): HTMLDivElement {
+  const row = div('tooltip-row');
+  row.append(div('tooltip-label', label), div('tooltip-value', value));
+  return row;
+}
+
+function renderInfoTooltip(info: InfoView): void {
+  const head = div('tooltip-head');
+  const provider = div('tooltip-provider');
+  provider.append(div('tooltip-name', info.providerDisplayName), div('tooltip-model', info.model));
+  head.append(provider, div('tooltip-state', currentState));
+
+  const rows = div('tooltip-rows');
+  rows.append(
+    tooltipRow('URL', compactUrl(info.baseUrl)),
+    tooltipRow('Panel', compactUrl(info.controlPanelUrl)),
+  );
+
+  const hotkeys = div('tooltip-row');
+  hotkeys.append(div('tooltip-label', 'Keys'));
+  const keys = div('tooltip-keys');
+  keys.append(keyChip(`PTT ${info.hotkeyCombo}`), keyChip(`Hide ${info.toggleHotkeyCombo}`));
+  hotkeys.append(keys);
+  rows.append(hotkeys);
+
+  const foot = div('tooltip-foot');
+  foot.append(div('tooltip-dot'), div('tooltip-value', 'Drag to move. Right-click for menu.'));
+
+  infoTooltip.replaceChildren(head, rows, foot);
+}
+
 setState('idle');
 
 window.murmur.onStatus((s) => {
   if ((STATES as readonly string[]).includes(s)) {
     setState(s as StateName);
   }
+  if (s === 'done') dismissErrorToast();
 });
 
 window.murmur.onStartRecording(async () => {
@@ -116,16 +189,44 @@ window.murmur.onStopRecording(async () => {
 });
 
 window.murmur.onInfo((info) => {
-  infoTooltip.textContent =
-    `${info.providerDisplayName} \u00b7 ${info.model}\n` +
-    `${info.baseUrl}\n` +
-    `PTT ${info.hotkeyCombo}  \u00b7  Toggle ${info.toggleHotkeyCombo}\n` +
-    `Panel ${info.controlPanelUrl}\n` +
-    'Drag to move \u00b7 Right-click for menu';
-  infoTooltip.style.whiteSpace = 'pre';
+  latestInfo = info;
+  renderInfoTooltip(info);
 });
 
 window.murmur.requestInfo();
+
+let lastErrorSessionDir: string | null = null;
+
+function dismissErrorToast(): void {
+  errorToast.classList.remove('visible');
+  lastErrorSessionDir = null;
+}
+
+window.murmur.onQueueDepth((depth) => {
+  if (depth > 0) {
+    queueBadge.textContent = String(depth);
+    queueBadge.classList.add('visible');
+  } else {
+    queueBadge.classList.remove('visible');
+  }
+});
+
+window.murmur.onError((payload) => {
+  lastErrorSessionDir = payload.sessionDir;
+  errorMsgEl.textContent = payload.message;
+  errorToast.classList.add('visible');
+});
+
+retryBtn.addEventListener('click', () => {
+  dismissErrorToast();
+  window.murmur.retry();
+});
+
+logBtn.addEventListener('click', () => {
+  if (lastErrorSessionDir) window.murmur.openLogDir(lastErrorSessionDir);
+});
+
+dismissBtn.addEventListener('click', dismissErrorToast);
 
 // Toggle window-level mouse passthrough so transparent areas don't eat clicks.
 overlay.addEventListener('mouseenter', () => {

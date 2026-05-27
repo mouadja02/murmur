@@ -22,6 +22,7 @@ export interface Skill {
 }
 
 const FRONTMATTER_RE = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n([\s\S]*)$/;
+const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function parseFrontmatter(raw: string): { meta: Record<string, string>; body: string } {
   const match = raw.match(FRONTMATTER_RE);
@@ -100,6 +101,10 @@ export function loadSkills(dir: string): Skill[] {
     }
     const { meta, body } = parseFrontmatter(raw);
     const id = meta.id || entry.replace(/\.md$/i, '');
+    if (!isValidSkillId(id)) {
+      console.warn(`[skills] skipped ${filePath}: invalid skill id "${id}"`);
+      continue;
+    }
     out.push({
       id,
       name: meta.name || id,
@@ -122,7 +127,7 @@ export interface SaveSkillInput {
 export function saveSkill(dir: string, input: SaveSkillInput): Skill {
   ensureDir(dir);
   const id = input.id?.trim() || slugify(input.name);
-  const filePath = path.join(dir, `${id}.md`);
+  const filePath = skillPath(dir, id);
   const meta = [`id: ${id}`, `name: ${input.name}`, `description: ${input.description ?? ''}`].join(
     '\n',
   );
@@ -138,7 +143,7 @@ export function saveSkill(dir: string, input: SaveSkillInput): Skill {
 }
 
 export function deleteSkill(dir: string, id: string): boolean {
-  const filePath = path.join(dir, `${id}.md`);
+  const filePath = skillPath(dir, id);
   if (!existsSync(filePath)) return false;
   unlinkSync(filePath);
   return true;

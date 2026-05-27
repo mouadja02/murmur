@@ -9,7 +9,26 @@
   <body>
     <header class="topbar">
       <div class="brand">
-        <span class="brand-dot"></span>
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" focusable="false">
+            <title>Murmur</title>
+            <defs>
+              <linearGradient id="murmur-panel-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#a78bfa" />
+                <stop offset="100%" stop-color="#60a5fa" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M5 24 V10 a1.5 1.5 0 0 1 2.7 -0.9 L13.5 17 a1 1 0 0 0 1.6 0 L17 14 a1 1 0 0 1 1.6 0 L20.5 17 a1 1 0 0 0 1.6 0 L24.3 9.1 A1.5 1.5 0 0 1 27 10 V24"
+              fill="none"
+              stroke="url(#murmur-panel-grad)"
+              stroke-width="2.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle cx="16" cy="22" r="1.6" fill="url(#murmur-panel-grad)" />
+          </svg>
+        </span>
         <div class="brand-text">
           <div class="brand-name">Murmur</div>
           <div class="brand-slogan">voice-first prompt engineering for vibe coders</div>
@@ -119,7 +138,7 @@
                   <button type="button" id="btn-fetch-skill" class="btn btn-ghost">Fetch</button>
                 </div>
                 <p class="hint" style="margin:4px 0 0">
-                  Works with any raw Markdown URL (GitHub raw, Gist, etc.)
+                  Only import skills from people you trust. Imported instructions can steer future LLM prompts.
                 </p>
               </div>
             </div>
@@ -143,6 +162,10 @@
                 <span>ID <small>(filename slug; leave blank to auto-generate)</small></span>
                 <input id="skill-id" type="text" autocomplete="off" />
               </label>
+              <div id="skill-import-warning" class="safety-note hidden" role="status">
+                Review every imported instruction before saving. Skills are prompt text, not code, but
+                malicious instructions can still redirect or weaken future prompts.
+              </div>
               <label>
                 <span>Instructions</span>
                 <textarea id="skill-content" spellcheck="false"></textarea>
@@ -299,6 +322,21 @@
             <span>Clipboard restore delay (ms)</span>
             <input id="cfg-clipboardRestoreDelayMs" type="number" min="0" max="2000" />
           </label>
+          <label>
+            <span>Clipboard after paste</span>
+            <select id="cfg-clipboardRetention">
+              <option value="keep-generated">Keep generated prompt available for manual paste</option>
+              <option value="restore-previous">Restore previous clipboard after auto-paste</option>
+            </select>
+          </label>
+          <label>
+            <span>Insertion method</span>
+            <select id="cfg-injectionMethod">
+              <option value="auto">Auto: paste, then type if paste fails</option>
+              <option value="clipboard">Clipboard paste only</option>
+              <option value="type">Type directly, also copy generated prompt</option>
+            </select>
+          </label>
           <div class="pane-footer">
             <div class="spacer"></div>
             <button id="btn-save-hotkeys" type="submit" class="btn btn-primary">
@@ -320,6 +358,13 @@
           <label>
             <span>Logs directory</span>
             <input id="cfg-logsDir" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Session logging</span>
+            <select id="cfg-logMode">
+              <option value="metadata-only">Metadata only: timings and errors, no audio or prompt text</option>
+              <option value="full">Full debugging: audio, transcription, system prompt, refined prompt</option>
+            </select>
           </label>
           <label>
             <span>Skills directory</span>

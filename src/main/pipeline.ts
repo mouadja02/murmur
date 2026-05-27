@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Status } from '../shared/ipc.js';
 import type { AudioRecorder } from './audio/recorder.js';
@@ -130,7 +130,7 @@ export class Pipeline {
     }
     this.cancelIdle();
     this.state = 'recording';
-    this.session = createSession(this.deps.cfg.logsDir);
+    this.session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
     console.log(`[pipeline] session=${this.session.dir}`);
     this.setStatus('recording');
     this.deps.requestRendererStart?.();
@@ -230,12 +230,15 @@ export class Pipeline {
     const session = existingSession ?? createSession(cfg.logsDir);
     const timings: Record<string, number | string> = { provider: provider.config.id };
     const pipelineStart = Date.now();
+    let transientWavPath: string | null = null;
 
     try {
       const pcm = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
       const wav = buildWav(pcm, cfg.sampleRate);
-      session.writeAudio(wav);
       const wavPath = path.join(session.dir, 'audio.wav');
+      transientWavPath = wavPath;
+      writeFileSync(wavPath, wav);
+      if (cfg.logMode === 'full') session.writeAudio(wav);
       timings.audioBytes = wav.length;
       timings.audioDurationMs = Math.round((pcm.length / 2 / cfg.sampleRate) * 1000);
 
@@ -248,13 +251,13 @@ export class Pipeline {
       timings.transcribeMs = Date.now() - tStart;
       session.writeTranscription(transcription);
       writeFileSync(path.join(session.dir, 'whisper-stderr.log'), whisperStderr, 'utf8');
+      if (cfg.logMode !== 'full') rmSync(wavPath, { force: true });
+      transientWavPath = null;
       console.log(
-        `[pipeline] transcription (${timings.transcribeMs} ms): ${JSON.stringify(transcription)}`,
+        `[pipeline] transcription complete (${timings.transcribeMs} ms, ${transcription.length} chars)`,
       );
 
-      if (!transcription) {
-        throw new Error('whisper returned empty transcription');
-      }
+      if (!transcription) throw new Error('whisper returned empty transcription');
 
       this.setStatus('refining');
       const skills = loadSkills(cfg.skillsDir);
@@ -269,11 +272,11 @@ export class Pipeline {
       });
       timings.refineMs = Date.now() - rStart;
       session.writeRefined(refined);
-      console.log(`[pipeline] refined (${timings.refineMs} ms): ${JSON.stringify(refined)}`);
+      console.log(
+        `[pipeline] refinement complete (${timings.refineMs} ms, ${refined.length} chars)`,
+      );
 
-      if (!refined) {
-        throw new Error(`${provider.config.displayName} returned empty refinement`);
-      }
+      if (!refined) throw new Error(`${provider.config.displayName} returned empty refinement`);
 
       if (shouldInject) {
         const injectFn = this.deps.inject;
@@ -293,6 +296,7 @@ export class Pipeline {
       this.setStatus('done');
       return { text: refined, transcription, sessionDir: session.dir };
     } catch (err) {
+      if (cfg.logMode !== 'full' && transientWavPath) rmSync(transientWavPath, { force: true });
       console.error('[pipeline] error:', err);
       session.writeError(err);
       timings.totalMs = Date.now() - pipelineStart;
@@ -419,6 +423,79 @@ export class Pipeline {
       console.error('[pipeline] handleAudioChunk error:', err);
       this.state = 'idle';
       this.scheduleIdle(2_500);
+      this.processNextQueued();
     }
+  }
+
+  async handleAudioChunk(buffer: ArrayBuffer): Promise<void> {
+    if (this.audioTimeout) {
+      clearTimeout(this.audioTimeout);
+      this.audioTimeout = null;
+    }
+    if (this.backgroundAudioTimeout) {
+      clearTimeout(this.backgroundAudioTimeout);
+      this.backgroundAudioTimeout = null;
+    }
+
+    // Background capture (recorded during processing) — enqueue, don't process yet.
+    if (this.state === 'processing' && this.backgroundSession) {
+      const session = this.backgroundSession;
+      this.backgroundSession = null;
+      if (buffer.byteLength > 0) {
+        this.enqueue({ session, buffer });
+      }
+      return;
+    }
+
+    if (!this.session || this.state !== 'recording') {
+      console.warn('[pipeline] audio chunk without active session');
+      return;
+    }
+
+    if (buffer.byteLength === 0) {
+      console.warn('[pipeline] empty audio chunk, resetting');
+      this.reset();
+      return;
+    }
+
+    const session = this.session;
+    this.session = null;
+    await this.processBuffer(session, buffer);
+  }
+
+  async retry(): Promise<void> {
+    if (this.state !== 'idle' || !this.lastErrorSessionDir) return;
+    const sessionDir = this.lastErrorSessionDir;
+    this.lastErrorSessionDir = null;
+
+    if (this.lastErrorAudioBuffer) {
+      const buffer = this.lastErrorAudioBuffer;
+      this.lastErrorAudioBuffer = null;
+      const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
+      this.state = 'processing';
+      await this.processBuffer(session, buffer);
+      return;
+    }
+
+    const wavPath = path.join(sessionDir, 'audio.wav');
+    if (!existsSync(wavPath)) {
+      console.warn('[pipeline] retry: audio.wav not found at', wavPath);
+      return;
+    }
+
+    const wavBuf = readFileSync(wavPath);
+    // Validate WAV signature before stripping header.
+    if (wavBuf.length < 44 || wavBuf.toString('ascii', 0, 4) !== 'RIFF') {
+      console.warn('[pipeline] retry: invalid WAV file at', wavPath);
+      return;
+    }
+    // Read the data chunk size from the WAV header (bytes 40-43, little-endian).
+    const dataSize = wavBuf.readUInt32LE(40);
+    const pcmBuf = wavBuf.subarray(44, 44 + dataSize);
+    const ab = pcmBuf.buffer.slice(pcmBuf.byteOffset, pcmBuf.byteOffset + pcmBuf.byteLength);
+
+    const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
+    this.state = 'processing';
+    await this.processBuffer(session, ab);
   }
 }

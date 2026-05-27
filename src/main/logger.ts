@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { LogMode } from './config/index.js';
 
 export interface Session {
   readonly dir: string;
@@ -21,27 +22,33 @@ function timestampDirName(d: Date): string {
   );
 }
 
-export function createSession(logsDir: string): Session {
+export function createSession(logsDir: string, logMode: LogMode = 'metadata-only'): Session {
   const now = new Date();
   const dir = path.join(logsDir, timestampDirName(now));
   mkdirSync(dir, { recursive: true });
+  const writeContent = logMode === 'full';
 
   return {
     dir,
     startedAt: now.getTime(),
     writeAudio(buf) {
+      if (!writeContent) return;
       writeFileSync(path.join(dir, 'audio.wav'), buf);
     },
     writeTranscription(text) {
+      if (!writeContent) return;
       writeFileSync(path.join(dir, 'transcription.txt'), text, 'utf8');
     },
     writeSystemPrompt(text) {
+      if (!writeContent) return;
       writeFileSync(path.join(dir, 'system-prompt.txt'), text, 'utf8');
     },
     writeRefined(text) {
+      if (!writeContent) return;
       writeFileSync(path.join(dir, 'refined.txt'), text, 'utf8');
     },
     writeError(err) {
+      if (!writeContent) return;
       const msg = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
       writeFileSync(path.join(dir, 'error.txt'), msg, 'utf8');
     },

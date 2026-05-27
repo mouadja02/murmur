@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -10,7 +11,14 @@ import {
 } from '../config/index.js';
 import { sanitizePartial } from '../config/schema.js';
 import { PROVIDER_PRESETS } from '../providers/index.js';
-import { composeSystemPrompt, deleteSkill, loadSkills, type Skill, saveSkill } from '../skills.js';
+import {
+  composeSystemPrompt,
+  deleteSkill,
+  isValidSkillId,
+  loadSkills,
+  type Skill,
+  saveSkill,
+} from '../skills.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -124,6 +132,8 @@ function publicConfig(cfg: ResolvedConfig): Record<string, unknown> {
     hotkeyCombo: cfg.hotkeyCombo,
     toggleHotkeyCombo: cfg.toggleHotkeyCombo,
     clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
+    clipboardRetention: cfg.clipboardRetention,
+    injectionMethod: cfg.injectionMethod,
     overlayAnchor: cfg.overlayAnchor,
     overlayOffsetX: cfg.overlayOffsetX,
     overlayOffsetY: cfg.overlayOffsetY,
@@ -149,7 +159,7 @@ function skillJson(s: Skill): Record<string, unknown> {
   };
 }
 
-function stateSnapshot(deps: ServerDeps): Record<string, unknown> {
+function stateSnapshot(deps: ServerDeps, csrfToken: string): Record<string, unknown> {
   const cfg = deps.getCurrentConfig();
   const skills = loadSkills(cfg.skillsDir);
   const composed = composeSystemPrompt(cfg.systemPrompt, skills, cfg.enabledSkills);
@@ -166,50 +176,10 @@ function stateSnapshot(deps: ServerDeps): Record<string, unknown> {
     overlay: {
       visible: deps.isOverlayVisible?.() ?? null,
     },
+    security: {
+      csrfToken,
+    },
   };
-}
-
-function sendHtmlConfirmation(
-  res: ServerResponse,
-  kind: 'shown' | 'hidden',
-  panelUrl: string,
-): void {
-  const title = kind === 'shown' ? 'Overlay shown' : 'Overlay hidden';
-  const body = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${title} · Murmur</title>
-<style>
-  :root { color-scheme: dark; }
-  body {
-    margin: 0; height: 100vh; display: grid; place-items: center;
-    background: radial-gradient(1200px 600px at 50% 20%, #1a1a2e 0%, #0b0b14 60%);
-    color: #e7e7f3;
-    font: 500 15px/1.5 "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
-  }
-  .card {
-    padding: 32px 40px; border-radius: 16px;
-    background: linear-gradient(180deg, rgba(26,26,46,.9), rgba(17,17,36,.9));
-    border: 1px solid #2a2a44; text-align: center; max-width: 440px;
-  }
-  h1 { margin: 0 0 8px; font-size: 22px; font-weight: 700;
-       background: linear-gradient(90deg, #a78bfa, #60a5fa);
-       -webkit-background-clip: text; background-clip: text; color: transparent; }
-  p { margin: 0 0 16px; color: #a8a9c7; }
-  a { color: #8b8cff; text-decoration: none; border-bottom: 1px dashed #8b8cff; }
-  a:hover { border-bottom-style: solid; }
-</style></head>
-<body><div class="card">
-  <h1>Overlay ${kind}</h1>
-  <p>The Murmur pill is now ${kind} on your desktop. You can close this tab.</p>
-  <p><a href="${panelUrl}">Open the control panel →</a></p>
-</div>
-<script>setTimeout(() => { window.close(); }, 1500);</script>
-</body></html>`;
-  res.writeHead(200, {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-    'Cache-Control': 'no-store',
-  });
-  res.end(body);
 }
 
 interface RouteContext {
@@ -218,6 +188,7 @@ interface RouteContext {
   body: unknown;
   deps: ServerDeps;
   res: ServerResponse;
+  csrfToken: string;
 }
 
 function matchRoute(pathname: string, pattern: string): Record<string, string> | null {
@@ -237,10 +208,10 @@ function matchRoute(pathname: string, pattern: string): Record<string, string> |
 }
 
 async function handleApi(ctx: RouteContext): Promise<boolean> {
-  const { method, pathname, body, deps, res } = ctx;
+  const { method, pathname, body, deps, res, csrfToken } = ctx;
 
   if (method === 'GET' && pathname === '/api/state') {
-    sendJson(res, 200, stateSnapshot(deps));
+    sendJson(res, 200, stateSnapshot(deps, csrfToken));
     return true;
   }
 
@@ -263,7 +234,7 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
       mergePatchIntoRaw(raw, patch);
     });
     deps.onConfigUpdated();
-    sendJson(res, 200, stateSnapshot(deps));
+    sendJson(res, 200, stateSnapshot(deps, csrfToken));
     return true;
   }
 
@@ -279,7 +250,7 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
       raw.systemPrompt = prompt;
     });
     deps.onConfigUpdated();
-    sendJson(res, 200, stateSnapshot(deps));
+    sendJson(res, 200, stateSnapshot(deps, csrfToken));
     return true;
   }
 
@@ -289,6 +260,10 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
       sendError(res, 400, 'name and content are required');
       return true;
     }
+    if (b.id && !isValidSkillId(b.id)) {
+      sendError(res, 400, 'skill id must use lowercase letters, numbers, and hyphens');
+      return true;
+    }
     const cfg = deps.getCurrentConfig();
     saveSkill(cfg.skillsDir, {
       id: b.id,
@@ -296,7 +271,7 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
       description: b.description ?? '',
       content: b.content,
     });
-    sendJson(res, 200, stateSnapshot(deps));
+    sendJson(res, 200, stateSnapshot(deps, csrfToken));
     return true;
   }
 
@@ -304,6 +279,10 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
     const p = matchRoute(pathname, '/api/skills/:id');
     if (p) {
       const cfg = deps.getCurrentConfig();
+      if (!isValidSkillId(p.id)) {
+        sendError(res, 400, 'skill id must use lowercase letters, numbers, and hyphens');
+        return true;
+      }
       if (method === 'PUT') {
         const b = body as { name?: string; description?: string; content?: string };
         if (!b.name || !b.content) {
@@ -316,7 +295,7 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
           description: b.description ?? '',
           content: b.content,
         });
-        sendJson(res, 200, stateSnapshot(deps));
+        sendJson(res, 200, stateSnapshot(deps, csrfToken));
         return true;
       }
       if (method === 'DELETE') {
@@ -333,7 +312,7 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
           });
           deps.onConfigUpdated();
         }
-        sendJson(res, 200, stateSnapshot(deps));
+        sendJson(res, 200, stateSnapshot(deps, csrfToken));
         return true;
       }
     }
@@ -342,6 +321,10 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
   {
     const p = matchRoute(pathname, '/api/skills/:id/toggle');
     if (p && method === 'POST') {
+      if (!isValidSkillId(p.id)) {
+        sendError(res, 400, 'skill id must use lowercase letters, numbers, and hyphens');
+        return true;
+      }
       const cfg = deps.getCurrentConfig();
       const b = body as { enabled?: boolean };
       const enable = b?.enabled ?? !cfg.enabledSkills.includes(p.id);
@@ -353,7 +336,7 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
         raw.enabledSkills = [...set];
       });
       deps.onConfigUpdated();
-      sendJson(res, 200, stateSnapshot(deps));
+      sendJson(res, 200, stateSnapshot(deps, csrfToken));
       return true;
     }
   }
@@ -384,6 +367,8 @@ function mergePatchIntoRaw(raw: Record<string, unknown>, patch: PartialConfig): 
     'hotkeyCombo',
     'toggleHotkeyCombo',
     'clipboardRestoreDelayMs',
+    'clipboardRetention',
+    'injectionMethod',
     'systemPrompt',
     'enabledSkills',
     'controlPanelPort',
@@ -406,25 +391,72 @@ function mergePatchIntoRaw(raw: Record<string, unknown>, patch: PartialConfig): 
   }
 }
 
+function requestPort(req: IncomingMessage): number | null {
+  const address = req.socket.address();
+  if (typeof address !== 'object' || address === null || !('port' in address)) return null;
+  return address.port;
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function isAllowedOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    const port = requestPort(req);
+    const originPort = parsed.port ? Number(parsed.port) : parsed.protocol === 'https:' ? 443 : 80;
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      isLoopbackHost(parsed.hostname) &&
+      port !== null &&
+      originPort === port
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isStateChangingMethod(method: string): boolean {
+  return method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+}
+
+function setSecurityHeaders(res: ServerResponse, csrfToken: string): void {
+  res.setHeader('Set-Cookie', `murmur_token=${csrfToken}; Path=/; SameSite=Strict`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+}
+
 export function startControlPanelServer(deps: ServerDeps): Promise<ServerHandle> {
   return new Promise((resolve, reject) => {
     const desiredPort = deps.getCurrentConfig().controlPanelPort;
+    const csrfToken = randomBytes(32).toString('base64url');
     const server = createServer(async (req, res) => {
       const method = req.method ?? 'GET';
       const rawUrl = req.url ?? '/';
       const pathname = rawUrl.split('?')[0];
 
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      setSecurityHeaders(res, csrfToken);
+      if (!isAllowedOrigin(req)) {
+        sendError(res, 403, 'origin not allowed');
+        return;
+      }
+
       if (method === 'OPTIONS') {
         res.writeHead(204, {
           'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Headers': 'Content-Type, X-Murmur-Token',
         });
         res.end();
         return;
       }
 
       if (pathname.startsWith('/api/')) {
+        if (isStateChangingMethod(method) && req.headers['x-murmur-token'] !== csrfToken) {
+          sendError(res, 403, 'missing or invalid control token');
+          return;
+        }
         let body: unknown = {};
         if (method !== 'GET') {
           try {
@@ -435,7 +467,7 @@ export function startControlPanelServer(deps: ServerDeps): Promise<ServerHandle>
           }
         }
         try {
-          const handled = await handleApi({ method, pathname, body, deps, res });
+          const handled = await handleApi({ method, pathname, body, deps, res, csrfToken });
           if (!handled) sendError(res, 404, 'not found');
         } catch (err) {
           console.error('[control-panel] handler error:', err);
@@ -444,19 +476,8 @@ export function startControlPanelServer(deps: ServerDeps): Promise<ServerHandle>
         return;
       }
 
-      // Terminal-clickable hyperlinks: side-effectful GETs that return a tiny
-      // confirmation HTML page. Not under /api/ so they render nicely in the
-      // browser when clicked from a terminal.
-      if (method === 'GET' && pathname === '/overlay/show') {
-        deps.showOverlay?.();
-        const base = `http://localhost:${(req.socket.address() as { port: number }).port}`;
-        sendHtmlConfirmation(res, 'shown', base);
-        return;
-      }
-      if (method === 'GET' && pathname === '/overlay/hide') {
-        deps.hideOverlay?.();
-        const base = `http://localhost:${(req.socket.address() as { port: number }).port}`;
-        sendHtmlConfirmation(res, 'hidden', base);
+      if (pathname === '/overlay/show' || pathname === '/overlay/hide') {
+        sendError(res, 405, 'overlay changes require POST /api/overlay/* from the control panel');
         return;
       }
 

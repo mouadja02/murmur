@@ -11,6 +11,7 @@ const state = {
   skills: [],
   composedSystemPrompt: '',
   providers: [],
+  csrfToken: null,
   selectedSkillId: null,
   dirtySkill: false,
 };
@@ -46,18 +47,30 @@ const FIELD_INFO = {
     flag: '--clipboard-restore-delay',
     env: 'MURMUR_CLIPBOARD_RESTORE_DELAY_MS',
   },
+  clipboardRetention: {
+    inputId: 'cfg-clipboardRetention',
+    flag: '--clipboard-retention',
+    env: 'MURMUR_CLIPBOARD_RETENTION',
+  },
+  injectionMethod: {
+    inputId: 'cfg-injectionMethod',
+    flag: '--injection-method',
+    env: 'MURMUR_INJECTION_METHOD',
+  },
   systemPrompt: { inputId: 'system-prompt', flag: '--system-prompt', env: 'MURMUR_SYSTEM_PROMPT' },
   controlPanelPort: {
     inputId: 'cfg-controlPanelPort',
     flag: '--control-panel-port',
     env: 'MURMUR_CONTROL_PANEL_PORT',
   },
+  logMode: { inputId: 'cfg-logMode', flag: '--log-mode', env: 'MURMUR_LOG_MODE' },
   logsDir: { inputId: 'cfg-logsDir', flag: '--logs-dir', env: 'MURMUR_LOGS_DIR' },
   skillsDir: { inputId: 'cfg-skillsDir', flag: '--skills-dir', env: 'MURMUR_SKILLS_DIR' },
 };
 
 async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (method !== 'GET' && state.csrfToken) opts.headers['X-Murmur-Token'] = state.csrfToken;
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
   const text = await res.text();
@@ -116,10 +129,13 @@ function applyStateToDom() {
     $('#cfg-hotkeyCombo').value = c.hotkeyCombo;
     $('#cfg-toggleHotkeyCombo').value = c.toggleHotkeyCombo;
     $('#cfg-clipboardRestoreDelayMs').value = c.clipboardRestoreDelayMs;
+    $('#cfg-clipboardRetention').value = c.clipboardRetention ?? 'keep-generated';
+    $('#cfg-injectionMethod').value = c.injectionMethod ?? 'auto';
   }
 
   if (!dirtyForms.has('paths')) {
     $('#cfg-logsDir').value = c.logsDir;
+    $('#cfg-logMode').value = c.logMode ?? 'metadata-only';
     $('#cfg-skillsDir').value = c.skillsDir;
     $('#cfg-controlPanelPort').value = c.controlPanelPort;
     $('#cfg-configFilePath').value = c.configFilePath;
@@ -259,6 +275,7 @@ function showNewSkillForm() {
   $('#skill-name').value = '';
   $('#skill-desc').value = '';
   $('#skill-content').value = '';
+  $('#skill-import-warning').classList.add('hidden');
   $('#skill-enabled').checked = false;
   $('#btn-delete-skill').style.display = 'none';
   renderSkillList();
@@ -283,6 +300,7 @@ async function refresh() {
     state.skills = snap.skills;
     state.composedSystemPrompt = snap.composedSystemPrompt;
     state.providers = snap.providers;
+    state.csrfToken = snap.security?.csrfToken ?? state.csrfToken;
     state.overlay = snap.overlay ?? { visible: null };
     applyStateToDom();
     applyOverridesToDom();
@@ -465,6 +483,7 @@ function applySnapshot(snap) {
   state.skills = snap.skills;
   state.composedSystemPrompt = snap.composedSystemPrompt;
   state.providers = snap.providers ?? state.providers;
+  state.csrfToken = snap.security?.csrfToken ?? state.csrfToken;
   applyStateToDom();
   applyOverridesToDom();
 }
@@ -489,7 +508,10 @@ function readConfigForm(extra = {}) {
     hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
     toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
     clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
+    clipboardRetention: $('#cfg-clipboardRetention').value,
+    injectionMethod: $('#cfg-injectionMethod').value,
     logsDir: $('#cfg-logsDir').value.trim(),
+    logMode: $('#cfg-logMode').value,
     skillsDir: $('#cfg-skillsDir').value.trim(),
     controlPanelPort: Number($('#cfg-controlPanelPort').value),
     ...extra,
@@ -646,6 +668,8 @@ function wireHotkeys() {
       hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
       toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
       clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
+      clipboardRetention: $('#cfg-clipboardRetention').value,
+      injectionMethod: $('#cfg-injectionMethod').value,
     }),
     'hotkeys',
   );
@@ -656,6 +680,7 @@ function wirePaths() {
     '#paths-form',
     () => ({
       logsDir: $('#cfg-logsDir').value.trim(),
+      logMode: $('#cfg-logMode').value,
       skillsDir: $('#cfg-skillsDir').value.trim(),
       controlPanelPort: Number($('#cfg-controlPanelPort').value),
     }),
@@ -683,11 +708,13 @@ function wireSaveAll() {
 const DEFAULT_PROMPT = `You refine a raw voice transcription into a high-quality prompt for an AI coding assistant.
 
 Rules:
-- Restructure as: Goal, then Context, then Constraints, then Output format.
+- Rewrite the transcription as one concise prompt that preserves exactly what the user asked for.
 - Remove filler words (um, like, you know, basically, actually, kind of, sort of).
 - Fix obvious dictation artifacts and homophones using coding context (e.g. "react" not "wreaked", "async" not "a sink").
-- Never invent requirements the user did not state. If something is ambiguous, keep it ambiguous.
-- Keep the user's voice. Do not make it corporate or verbose.
+- Do not invent requirements, context, constraints, examples, or output formats the user did not state.
+- Do not expand vague ideas into implementation plans. If something is ambiguous, keep it ambiguous.
+- Keep the user's voice and level of detail. Do not make it corporate or verbose.
+- Use bullets only when the user clearly dictated multiple distinct items.
 - Output ONLY the refined prompt. No preamble like "Here is the refined prompt:". No meta-commentary. No markdown code fences unless the refined prompt itself needs them.`;
 
 /**
@@ -762,6 +789,7 @@ function prefillNewSkillForm(parsed) {
     $('#skill-id').readOnly = false; // let user adjust
   }
   if (parsed.content) $('#skill-content').value = parsed.content;
+  $('#skill-import-warning').classList.remove('hidden');
   // Collapse the import panel
   $('#skill-import-panel').classList.add('hidden');
   // Focus the most useful field
@@ -826,6 +854,10 @@ function wireImportSkill() {
     fetchBtn.textContent = 'Fetching\u2026';
     fetchBtn.disabled = true;
     try {
+      const ok = confirm(
+        'Import skills only from sources you trust. A skill can change the instructions sent to your LLM for future prompts. Fetch this URL?',
+      );
+      if (!ok) return;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       prefillNewSkillForm(parseSkillMarkdown(await res.text()));

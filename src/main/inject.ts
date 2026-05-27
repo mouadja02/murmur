@@ -1,5 +1,8 @@
+// src/main/inject.ts
 import { Key, keyboard } from '@nut-tree-fork/nut-js';
 import { clipboard } from 'electron';
+import { injectGeneratedText } from './clipboard-injection.js';
+import type { ClipboardRetention, InjectionMethod } from './config/index.js';
 
 keyboard.config.autoDelayMs = 10;
 
@@ -9,20 +12,19 @@ function sleep(ms: number): Promise<void> {
 
 export interface InjectOptions {
   clipboardRestoreDelayMs: number;
+  clipboardRetention: ClipboardRetention;
+  injectionMethod: InjectionMethod;
 }
 
 export async function pasteAtCursor(text: string, opts: InjectOptions): Promise<void> {
-  const previous = clipboard.readText();
-  clipboard.writeText(text);
-
-  await sleep(30);
-  // macOS uses Cmd+V; Windows and Linux use Ctrl+V.
-  if (process.platform === 'darwin') {
-    await keyboard.type(Key.LeftSuper, Key.V);
-  } else {
-    await keyboard.type(Key.LeftControl, Key.V);
-  }
-
-  await sleep(opts.clipboardRestoreDelayMs);
-  clipboard.writeText(previous);
+  await injectGeneratedText(text, opts, {
+    clipboard,
+    keyboard,
+    keys: {
+      pasteModifier: process.platform === 'darwin' ? Key.LeftSuper : Key.LeftControl,
+      v: Key.V,
+    },
+    sleep,
+    logger: console,
+  });
 }

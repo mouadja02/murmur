@@ -21,7 +21,7 @@ export interface CliResult {
  * Supports both `--key value` and `--key=value`.
  *
  * Recognised flags:
- *   --provider <ollama|openai-compat>
+ *   --provider <ollama|openai-compat|anthropic>
  *   --base-url <url>
  *   --model <id>
  *   --api-key <key>
@@ -94,7 +94,17 @@ export function parseCli(argv: readonly string[]): CliResult {
   if (typeof raw['whisper-model'] === 'string') candidate.whisperModelPath = raw['whisper-model'];
   if (typeof raw.hotkey === 'string') candidate.hotkeyCombo = raw.hotkey;
   if (typeof raw['toggle-hotkey'] === 'string') candidate.toggleHotkeyCombo = raw['toggle-hotkey'];
+  if (typeof raw['clipboard-restore-delay'] === 'string') {
+    const n = Number(raw['clipboard-restore-delay']);
+    if (Number.isFinite(n)) candidate.clipboardRestoreDelayMs = n;
+  }
+  if (typeof raw['clipboard-retention'] === 'string') {
+    candidate.clipboardRetention = raw['clipboard-retention'];
+  }
+  if (typeof raw['injection-method'] === 'string')
+    candidate.injectionMethod = raw['injection-method'];
   if (typeof raw['logs-dir'] === 'string') candidate.logsDir = raw['logs-dir'];
+  if (typeof raw['log-mode'] === 'string') candidate.logMode = raw['log-mode'];
   if (typeof raw['skills-dir'] === 'string') candidate.skillsDir = raw['skills-dir'];
   if (typeof raw['system-prompt'] === 'string') candidate.systemPrompt = raw['system-prompt'];
   if (typeof raw['enabled-skills'] === 'string') {
@@ -149,10 +159,11 @@ Usage:
   electron . [flags]
 
 LLM provider:
-  --provider <ollama|openai-compat>   Selects the LLM backend
+  --provider <ollama|openai-compat|anthropic>
+                                       Selects the LLM backend
   --base-url <url>                    Provider HTTP base URL
   --model <id>                        Model identifier on the provider
-  --api-key <key>                     Optional bearer token (openai-compat only)
+  --api-key <key>                     Optional bearer token (required for Anthropic)
   --temperature <float>               Sampling temperature (default 0.2)
 
 Local STT:
@@ -162,6 +173,10 @@ Local STT:
 Hotkeys (combo strings parsed from "Ctrl+Shift+Space" form):
   --hotkey <combo>                    Push-to-talk combo (default Ctrl+Shift+Space)
   --toggle-hotkey <combo>             Show/hide overlay (default Ctrl+Shift+H)
+  --injection-method <auto|clipboard|type>
+                                      How generated prompts are inserted
+  --clipboard-retention <keep-generated|restore-previous>
+                                      Keep generated text on clipboard after paste, or restore old clipboard
 
 Overlay window:
   --overlay-anchor <bottom-center|bottom-right|top-right|free>
@@ -173,6 +188,7 @@ Prompt engineering:
   --system-prompt <text>              Override the active system prompt for this run
   --enabled-skills <id1,id2,...>      Comma-separated skill IDs to compose into the system prompt
   --skills-dir <path>                 Directory of *.md skill files
+  --log-mode <metadata-only|full>     Session logging detail (default metadata-only)
 
 Web control panel:
   --control-panel-port <port>         HTTP port for the control panel (0 = random, default 7331)
@@ -195,4 +211,6 @@ Provider quick reference:
     --provider openai-compat --base-url http://localhost:1234/v1 --model <loaded-model-id>
   llama.cpp server:
     --provider openai-compat --base-url http://localhost:8080/v1 --model <served-model>
+  Anthropic:
+    --provider anthropic --base-url https://api.anthropic.com/v1 --model claude-sonnet-4-5 --api-key <key>
 `.trim();
