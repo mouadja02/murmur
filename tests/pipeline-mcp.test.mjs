@@ -552,6 +552,9 @@ describe('Pipeline overlay path', () => {
       _baseDir: tempBase,
       enabledSkills: [],
       appSkillRoutes: [{ match: 'code', enable: ['code-context'], disable: [] }],
+      contextCapture: true,
+      clipboardContextEntries: 0,
+      screenshotContext: true,
     });
     loadSkills(cfg.skillsDir);
     const requests = [];
@@ -569,10 +572,13 @@ describe('Pipeline overlay path', () => {
       inject: async () => {},
       captureContext: async () => {
         captures++;
+        const window = { processName: 'Code', windowTitle: 'app.ts', os: 'Windows' };
+        const screenshot = { base64: 'AAAA', mimeType: 'image/jpeg', width: 10, height: 10 };
         return {
-          window: { processName: 'Code', windowTitle: 'app.ts', os: 'Windows' },
+          window,
           block: '<!-- context: app=Code -->',
           images: [{ base64: 'AAAA', mimeType: 'image/jpeg' }],
+          shared: { window, clipboard: [], screenshot },
         };
       },
     });

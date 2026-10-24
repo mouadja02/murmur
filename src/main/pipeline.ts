@@ -18,7 +18,12 @@ import {
 import { peakWindowRmsDb, TARGET_SAMPLE_RATE } from '../shared/pcm.js';
 import type { AudioRecorder } from './audio/recorder.js';
 import type { ResolvedConfig } from './config/index.js';
-import { type CapturedContext, routeSkills, withContext } from './context/index.js';
+import {
+  type CapturedContext,
+  contextForRerun,
+  routeSkills,
+  withContext,
+} from './context/index.js';
 import type { InjectOptions } from './inject.js';
 import { createSession, type Session } from './logger.js';
 import type { ProgressiveInjector } from './progressive-inject.js';
@@ -104,6 +109,12 @@ interface PendingHeadlessRecord {
 
 const NO_CONTEXT: Promise<CapturedContext | null> = Promise.resolve(null);
 
+/** Where refinement requests (and so any shared context) are sent. */
+function destinationOf(provider: LlmProvider): string {
+  const { id, baseUrl } = provider.config;
+  return `${id} ${baseUrl.trim().replace(/\/+$/, '').toLowerCase()}`;
+}
+
 export class Pipeline {
   private state: PipelineState = 'idle';
   private session: Session | null = null;
@@ -122,7 +133,9 @@ export class Pipeline {
   private tokenListeners = new Set<(token: string, phase: TokenPhase) => void>();
   private lastTranscription: string | null = null;
   private lastContext: CapturedContext | null = null;
+  private lastContextDestination = '';
   private lastErrorContext: Promise<CapturedContext | null> = NO_CONTEXT;
+  private lastErrorContextDestination = '';
   private sessionContext: Promise<CapturedContext | null> = NO_CONTEXT;
   private backgroundContext: Promise<CapturedContext | null> = NO_CONTEXT;
   private currentStatus: Status = 'idle';
@@ -149,10 +162,39 @@ export class Pipeline {
    */
   inheritFrom(prev: Pipeline): void {
     this.lastTranscription = prev.lastTranscription;
-    this.lastContext = prev.lastContext;
     this.lastErrorSessionDir = prev.lastErrorSessionDir;
     this.lastErrorAudioBuffer = prev.lastErrorAudioBuffer;
-    this.lastErrorContext = prev.lastErrorContext;
+    // Keep only the context the new settings and provider allow: what the user
+    // switched off must not stay in memory, nor come back if it is re-enabled.
+    this.lastContextDestination = prev.lastContextDestination;
+    this.lastContext = this.rerunContext(prev.lastContext, prev.lastContextDestination);
+    this.lastErrorContextDestination = prev.lastErrorContextDestination;
+    this.lastErrorContext = this.rerunContextLater(
+      prev.lastErrorContext,
+      prev.lastErrorContextDestination,
+    );
+  }
+
+  /** A stored context filtered by the current settings and provider (see `contextForRerun`). */
+  private rerunContext(ctx: CapturedContext | null, capturedFor: string): CapturedContext | null {
+    const { cfg, provider } = this.deps;
+    return contextForRerun(
+      ctx,
+      {
+        contextCapture: cfg.contextCapture,
+        clipboardContextEntries: cfg.clipboardContextEntries,
+        screenshotContext: cfg.screenshotContext,
+        appSkillRoutes: cfg.appSkillRoutes ?? [],
+      },
+      capturedFor === destinationOf(provider),
+    );
+  }
+
+  private rerunContextLater(
+    ctx: Promise<CapturedContext | null>,
+    capturedFor: string,
+  ): Promise<CapturedContext | null> {
+    return ctx.then((resolved) => this.rerunContext(resolved, capturedFor));
   }
 
   addTokenListener(fn: (token: string, phase: TokenPhase) => void): void {
@@ -465,8 +507,9 @@ export class Pipeline {
     const useProgressive = cfg.progressiveInjection && !!this.deps.createProgressiveInjector;
     // Use the skills enabled *now*: the point of refine-last is re-running the
     // previous dictation after tweaking skills / the prompt in the panel. The
-    // context is the one captured with that dictation.
-    const ctx = this.lastContext;
+    // context is the one captured with that dictation, narrowed to what the
+    // current settings and provider allow.
+    const ctx = this.rerunContext(this.lastContext, this.lastContextDestination);
     const { composed, activeSkillIds } = this.composeForDictation(skillIds, ctx);
     const session = createSession(cfg.logsDir, cfg.logMode);
     const pipelineStart = Date.now();
@@ -617,6 +660,7 @@ export class Pipeline {
       const ctx = opts.context ? await opts.context : null;
       this.lastTranscription = transcription;
       this.lastContext = ctx;
+      this.lastContextDestination = destinationOf(provider);
 
       this.setStatus('refining-streaming');
       const { composed, activeSkillIds } = this.composeForDictation(opts.skillIds, ctx);
@@ -716,6 +760,7 @@ export class Pipeline {
       }
       this.lastErrorSessionDir = session.dir;
       this.lastErrorAudioBuffer = buffer.slice(0);
+      this.lastErrorContextDestination = destinationOf(this.deps.provider);
       this.lastErrorContext = context;
       const message = err instanceof Error ? err.message : String(err);
       this.deps.getWindow?.()?.webContents.send(IPC_ERROR, {
@@ -899,7 +944,10 @@ export class Pipeline {
 
     if (this.lastErrorAudioBuffer) {
       const buffer = this.lastErrorAudioBuffer;
-      const context = this.lastErrorContext;
+      const context = this.rerunContextLater(
+        this.lastErrorContext,
+        this.lastErrorContextDestination,
+      );
       this.lastErrorAudioBuffer = null;
       this.lastErrorContext = NO_CONTEXT;
       const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
