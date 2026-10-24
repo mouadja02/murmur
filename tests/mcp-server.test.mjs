@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { createMurmurMcpServer, startMcpServer } from '../dist/main/mcp/server.js';
+import { IncompleteRefinementError } from '../dist/main/pipeline.js';
 
 function cfg(dir) {
   return {
@@ -85,6 +86,7 @@ describe('Murmur MCP tool handlers', () => {
     const result = await server.callToolForTest('murmur_record', { duration_ms: 5 });
 
     assert.equal(result.structuredContent.text, 'refined voice');
+    assert.equal(result.structuredContent.stopReason, 'end');
     assert.deepEqual(calls, [{ durationMs: 5, skillIds: undefined, inject: false }]);
     assert.equal(result.isError, undefined);
   });
@@ -105,6 +107,61 @@ describe('Murmur MCP tool handlers', () => {
     });
 
     assert.equal(result.structuredContent.text, 'raw:concise-output');
+    assert.equal(result.structuredContent.stopReason, 'end');
+  });
+
+  it('surfaces a partial refine result with its stop reason and transcription', async () => {
+    const server = createMurmurMcpServer({
+      getConfig: () => cfg(dir),
+      onConfigUpdated: () => {},
+      getPipeline: () =>
+        idlePipeline({
+          refineText: async () => {
+            throw new IncompleteRefinementError(
+              'partial',
+              'raw request',
+              'length',
+              undefined,
+              false,
+            );
+          },
+        }),
+    });
+
+    const result = await server.callToolForTest('murmur_refine', { text: 'raw request' });
+
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.stopReason, 'length');
+    assert.equal(result.structuredContent.text, 'partial');
+    assert.equal(result.structuredContent.transcription, 'raw request');
+    assert.equal(result.structuredContent.partial, true);
+  });
+
+  it('surfaces a partial record result as an MCP error', async () => {
+    const server = createMurmurMcpServer({
+      getConfig: () => cfg(dir),
+      onConfigUpdated: () => {},
+      getPipeline: () =>
+        idlePipeline({
+          record: async () => {
+            throw new IncompleteRefinementError(
+              'partial voice',
+              'spoken request',
+              'aborted',
+              '/tmp/s',
+              true,
+            );
+          },
+        }),
+    });
+
+    const result = await server.callToolForTest('murmur_record', { duration_ms: 5 });
+
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.stopReason, 'aborted');
+    assert.equal(result.structuredContent.text, 'partial voice');
+    assert.equal(result.structuredContent.transcription, 'spoken request');
+    assert.equal(result.structuredContent.copiedToClipboard, true);
   });
 
   it('returns tool error for invalid refine arguments', async () => {

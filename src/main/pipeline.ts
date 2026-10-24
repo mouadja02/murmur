@@ -23,6 +23,7 @@ import type { InjectOptions } from './inject.js';
 import { createSession, type Session } from './logger.js';
 import type { ProgressiveInjector } from './progressive-inject.js';
 import type { LlmProvider } from './providers/index.js';
+import type { StopReason } from './providers/types.js';
 import { composeSystemPrompt, loadSkills } from './skills.js';
 import { type TranscribeResult, transcribe } from './transcribe.js';
 import { buildWav } from './wav.js';
@@ -46,10 +47,35 @@ export class NoSpeechError extends Error {
   }
 }
 
+/**
+ * A provider returned text but explicitly said generation was incomplete.
+ * Keeping this distinct from transport errors lets MCP callers inspect the
+ * partial text and original transcription without treating it as success.
+ */
+export class IncompleteRefinementError extends Error {
+  constructor(
+    public readonly partialText: string,
+    public readonly transcription: string,
+    public readonly stopReason: Extract<StopReason, 'length' | 'aborted'>,
+    public readonly sessionDir: string | undefined,
+    public readonly copiedToClipboard: boolean,
+  ) {
+    super(
+      `${stopReason === 'length' ? 'Refinement was cut off by the provider' : 'Refinement stream ended early'}; ` +
+        (copiedToClipboard
+          ? 'partial text was copied to the clipboard. '
+          : 'partial text is available in the error result. ') +
+        'The raw transcription is retained for retry.',
+    );
+    this.name = 'IncompleteRefinementError';
+  }
+}
+
 export interface ProcessPcmResult {
   text: string;
   transcription: string;
   sessionDir: string;
+  stopReason: StopReason;
 }
 
 export interface ProcessPcmOptions {
@@ -82,6 +108,7 @@ export interface PipelineDeps {
   requestRendererStart?: (autoStop: boolean) => void;
   requestRendererStop?: () => void;
   inject?: (text: string, opts: InjectOptions) => Promise<void>;
+  copyToClipboard?: (text: string) => Promise<void>;
   transcribeAudio?: typeof transcribe;
   createRecorder?: () => AudioRecorder;
   createProgressiveInjector?: () => ProgressiveInjector;
@@ -128,6 +155,48 @@ export class Pipeline {
   private currentStatus: Status = 'idle';
   private statusBeforeQueueFull: Status = 'idle';
   private stopRequested = false;
+
+  private async rejectIncompleteRefinement(
+    response: { text: string; stopReason?: StopReason },
+    transcription: string,
+    sessionDir?: string,
+  ): Promise<never> {
+    const stopReason = response.stopReason;
+    if (stopReason !== 'length' && stopReason !== 'aborted') {
+      throw new Error('rejectIncompleteRefinement called for a complete response');
+    }
+
+    let copiedToClipboard = false;
+    if (response.text && this.deps.copyToClipboard) {
+      try {
+        await this.deps.copyToClipboard(response.text);
+        copiedToClipboard = true;
+      } catch (err) {
+        console.warn('[pipeline] could not copy partial refinement to clipboard:', err);
+      }
+    }
+    throw new IncompleteRefinementError(
+      response.text,
+      transcription,
+      stopReason,
+      sessionDir,
+      copiedToClipboard,
+    );
+  }
+
+  private sendError(err: unknown, sessionDir: string): void {
+    const payload: ErrorPayload = {
+      message: err instanceof Error ? err.message : String(err),
+      sessionDir,
+    };
+    if (err instanceof IncompleteRefinementError) {
+      payload.partialText = err.partialText;
+      payload.transcription = err.transcription;
+      payload.stopReason = err.stopReason;
+      payload.copiedToClipboard = err.copiedToClipboard;
+    }
+    this.deps.getWindow?.()?.webContents.send(IPC_ERROR, payload);
+  }
 
   constructor(private readonly deps: PipelineDeps) {}
 
@@ -423,10 +492,14 @@ export class Pipeline {
       skills,
       this.resolveSkillIds(opts.skillIds),
     );
-    const { text: refined } = await provider.refine({
+    const response = await provider.refine({
       systemPrompt: composed,
       userPrompt: text,
     });
+    const refined = response.text;
+    if (response.stopReason === 'length' || response.stopReason === 'aborted') {
+      await this.rejectIncompleteRefinement(response, text);
+    }
     if (!refined) {
       throw new Error(`${provider.config.displayName} returned empty refinement`);
     }
@@ -492,7 +565,7 @@ export class Pipeline {
       if (ctx?.block && cfg.logMode === 'full') session.writeContext(ctx.block);
 
       const rStart = Date.now();
-      const { text: refined } = await provider.refineStream(
+      const response = await provider.refineStream(
         {
           systemPrompt: composed,
           userPrompt: transcription,
@@ -501,16 +574,26 @@ export class Pipeline {
         {
           onToken: (token) => {
             this.emitToken(token, 'refinement');
-            if (injector) injector.pushToken(token);
           },
         },
       );
+      const refined = response.text;
+      const stopReason = response.stopReason ?? 'end';
       timings.refineMs = Date.now() - rStart;
+      timings.stopReason = stopReason;
       session.writeRefined(refined);
+
+      if (stopReason === 'length' || stopReason === 'aborted') {
+        await this.rejectIncompleteRefinement(response, transcription, session.dir);
+      }
 
       if (!refined) throw new Error(`${provider.config.displayName} returned empty refinement`);
 
       if (injector) {
+        // Do not type streamed tokens until the provider confirms a complete
+        // response; a length-limited stream must never partially alter the
+        // user's editor.
+        injector.pushToken(refined);
         const iStart = Date.now();
         await injector.flush();
         timings.injectMs = Date.now() - iStart;
@@ -542,6 +625,7 @@ export class Pipeline {
       session.writeTimings(timings);
       this.state = 'idle';
       this.setStatus('error');
+      this.sendError(err, session.dir);
       this.scheduleIdle(2_500);
       throw err;
     }
@@ -626,7 +710,7 @@ export class Pipeline {
       if (ctx?.window) timings.app = ctx.window.processName;
       if (ctx?.images.length) timings.images = ctx.images.length;
       const rStart = Date.now();
-      const { text: refined } = await provider.refineStream(
+      const response = await provider.refineStream(
         {
           systemPrompt: composed,
           userPrompt: transcription,
@@ -635,19 +719,28 @@ export class Pipeline {
         {
           onToken: (token) => {
             this.emitToken(token, 'refinement');
-            if (injector) injector.pushToken(token);
           },
         },
       );
+      const refined = response.text;
+      const stopReason = response.stopReason ?? 'end';
       timings.refineMs = Date.now() - rStart;
+      timings.stopReason = stopReason;
       session.writeRefined(refined);
       console.log(
         `[pipeline] refinement complete (${timings.refineMs} ms, ${refined.length} chars)`,
       );
 
+      if (stopReason === 'length' || stopReason === 'aborted') {
+        await this.rejectIncompleteRefinement(response, transcription, session.dir);
+      }
+
       if (!refined) throw new Error(`${provider.config.displayName} returned empty refinement`);
 
       if (injector) {
+        // Delay progressive injection until the stop reason is known so an
+        // aborted or length-limited stream cannot type partial text.
+        injector.pushToken(refined);
         const iStart = Date.now();
         await injector.flush();
         timings.injectMs = Date.now() - iStart;
@@ -671,7 +764,7 @@ export class Pipeline {
       console.log(`[pipeline] done: total=${timings.totalMs}ms`);
 
       this.setStatus('done');
-      return { text: refined, transcription, sessionDir: session.dir };
+      return { text: refined, transcription, sessionDir: session.dir, stopReason };
     } catch (err) {
       if (injector) injector.abort();
       if (cfg.logMode !== 'full' && transientWavPath) rmSync(transientWavPath, { force: true });
@@ -717,11 +810,7 @@ export class Pipeline {
       this.lastErrorSessionDir = session.dir;
       this.lastErrorAudioBuffer = buffer.slice(0);
       this.lastErrorContext = context;
-      const message = err instanceof Error ? err.message : String(err);
-      this.deps.getWindow?.()?.webContents.send(IPC_ERROR, {
-        message,
-        sessionDir: session.dir,
-      } satisfies ErrorPayload);
+      this.sendError(err, session.dir);
       if (this.continueWithNextCapture()) return;
       this.scheduleIdle(2_500);
     }

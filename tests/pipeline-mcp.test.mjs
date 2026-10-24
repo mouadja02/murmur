@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Pipeline } from '../dist/main/pipeline.js';
+import { OpenAiCompatProvider } from '../dist/main/providers/openai-compat.js';
 import { loadSkills } from '../dist/main/skills.js';
 
 function makeFakeConfig(overrides = {}) {
@@ -116,6 +117,56 @@ describe('Pipeline MCP / headless', () => {
       statuses.filter((s) => s !== 'idle'),
       ['transcribing-streaming', 'refining-streaming', 'done'],
     );
+  });
+
+  it('does not inject a truncated provider response as a successful refinement', async () => {
+    const cfg = makeFakeConfig({ _baseDir: tempBase });
+    loadSkills(cfg.skillsDir);
+    const originalFetch = globalThis.fetch;
+    const injections = [];
+    const clipboard = [];
+    const statuses = [];
+    const event = {
+      choices: [{ delta: { content: 'partial output' }, finish_reason: 'length' }],
+    };
+    globalThis.fetch = async () =>
+      new Response(`data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    try {
+      const pipeline = new Pipeline({
+        cfg,
+        provider: new OpenAiCompatProvider({
+          id: 'openai-compat',
+          displayName: 'Test',
+          baseUrl: 'http://provider/v1',
+          model: 'm',
+          apiKey: null,
+          temperature: 0,
+        }),
+        transcribeAudio: async () => ({ text: 'spoken request', stderr: '', durationMs: 1 }),
+        inject: async (text) => injections.push(text),
+        copyToClipboard: async (text) => clipboard.push(text),
+        emitStatus: (status) => statuses.push(status),
+      });
+
+      await assert.rejects(pipeline.processPcm(samplePcm()), (err) => {
+        assert.equal(err.name, 'IncompleteRefinementError');
+        assert.equal(err.stopReason, 'length');
+        assert.equal(err.partialText, 'partial output');
+        assert.equal(err.transcription, 'spoken request');
+        assert.equal(err.copiedToClipboard, true);
+        return true;
+      });
+      assert.deepEqual(injections, []);
+      assert.deepEqual(clipboard, ['partial output']);
+      assert.equal(statuses.includes('done'), false);
+      assert.equal(statuses.at(-1), 'error');
+      assert.equal(pipeline.hasLastTranscription(), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('refineText with skillIds composes skills without mutating cfg.enabledSkills', async () => {

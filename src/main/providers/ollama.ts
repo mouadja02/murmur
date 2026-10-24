@@ -3,9 +3,10 @@ import type {
   ProviderConfig,
   RefineRequest,
   RefineResponse,
+  StopReason,
   StreamRefineOptions,
 } from './types.js';
-import { createThinkFilter, stripThink } from './types.js';
+import { createThinkFilter, normalizeStopReason, stripThink } from './types.js';
 
 interface OllamaTagsResponse {
   models: { name: string; model?: string }[];
@@ -14,6 +15,7 @@ interface OllamaTagsResponse {
 interface OllamaGenerateResponse {
   response: string;
   done: boolean;
+  done_reason?: string | null;
   error?: string;
 }
 
@@ -48,7 +50,11 @@ export class OllamaProvider implements LlmProvider {
     }
 
     const data = (await res.json()) as OllamaGenerateResponse;
-    return { text: stripThink(data.response), durationMs: Date.now() - started };
+    return {
+      text: stripThink(data.response),
+      durationMs: Date.now() - started,
+      stopReason: data.done ? normalizeStopReason(data.done_reason ?? 'done') : 'aborted',
+    };
   }
 
   async refineStream(
@@ -90,6 +96,8 @@ export class OllamaProvider implements LlmProvider {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let doneReason: StopReason = 'unknown';
+    let sawDone = false;
 
     const handleLine = (line: string) => {
       const trimmed = line.trim();
@@ -98,6 +106,8 @@ export class OllamaProvider implements LlmProvider {
       // Ollama reports failures mid-stream (e.g. model OOM) as {"error": "..."}
       // with HTTP 200; without this they surfaced as "empty refinement".
       if (chunk.error) throw new Error(`Ollama: ${chunk.error}`);
+      if (chunk.done) sawDone = true;
+      if (chunk.done_reason) doneReason = normalizeStopReason(chunk.done_reason);
       if (chunk.response) {
         fullText += chunk.response;
         visible.push(chunk.response);
@@ -118,9 +128,15 @@ export class OllamaProvider implements LlmProvider {
     } finally {
       reader.releaseLock();
     }
+    if (!sawDone) doneReason = 'aborted';
+    else if (doneReason === 'unknown') doneReason = 'end';
     visible.flush();
 
-    return { text: stripThink(fullText), durationMs: Date.now() - started };
+    return {
+      text: stripThink(fullText),
+      durationMs: Date.now() - started,
+      stopReason: doneReason,
+    };
   }
 
   async prewarm(): Promise<number> {
