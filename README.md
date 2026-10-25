@@ -216,19 +216,22 @@ Every session gets a timestamped folder under `logs/`. By default it stores timi
 
 Open it from the overlay (right-click → **Open control panel**), from the pre-launch terminal menu, or by pasting `http://localhost:7331` into your browser.
 
-| Tab | What you can do |
+The sidebar groups the sections: **Prompt** (System prompt, Skills), **Models** (Provider, Whisper), **Capture** (Hotkeys, Voice & context), **System** (Paths) and **Help** (Model guide). The panel follows your OS light or dark setting.
+
+| Section | What you can do |
 | --- | --- |
 | **System prompt** | Live-edit the active prompt and see the composed preview (base + enabled skills). |
-| **Skills** | Add, edit, rename, delete skills. Import from a local `.md` file or any raw Markdown URL (GitHub raw, Gist, …). One click to enable/disable each. |
-| **Provider** | Switch provider, base URL, model, API key, temperature. One-click presets for local and online providers. **Test connection** button reports latency. Fields whose value comes from a CLI flag or env var are shown read-only with a lock badge — see [Config precedence](#config-precedence). |
+| **Skills** | Add, edit, rename, delete skills. Import from a local `.md` file or any raw Markdown URL (GitHub raw, Gist, …). One switch to enable/disable each. |
+| **Provider** | Switch provider, base URL, model, API key, temperature. A **Local / Cloud / Network** badge beside the heading says where your data goes, and follows the base URL as you type. One-click presets for local and online providers. **Test connection** reports latency for the *saved* settings, and says so if you have unsaved provider edits. Fields whose value comes from a CLI flag or env var are shown read-only with a lock badge — see [Config precedence](#config-precedence). |
 | **Whisper** | Point to a different `whisper-cli` binary (or `whisper-cli.exe` on Windows) or `.bin` model. |
-| **Hotkeys** | Bind push-to-talk and toggle combos, choose hold or toggle push-to-talk, choose insertion mode, decide what happens if the active window changed before insertion, and whether the generated prompt stays on the clipboard after auto-paste. |
+| **Hotkeys** | Bind push-to-talk and toggle combos by pressing **Record** and then the keys (a bare letter is refused, so normal typing is never hijacked), choose hold or toggle push-to-talk, choose insertion mode, decide what happens if the active window changed before insertion, and whether the generated prompt stays on the clipboard after auto-paste. |
+| **Voice & context** | Voice activity detection with sliders for the speech threshold, silence timeout and lead-in, and the switches for what context the model sees. |
 | **Paths** | Logs dir, skills dir, and the resolved config file path. |
 | **Model guide** | Hardware-tiered model recommendations with one-click `ollama pull` copy commands. |
 
-Every save writes back to the config file atomically and hot-reloads in the running app — no restart needed.
+**One save bar.** Edits are not written as you type. A bar at the bottom shows which sections have unsaved changes (they are also dotted in the sidebar) with **Discard** and **Save changes** (`Ctrl+S`); the browser warns before you leave with unsaved edits. A save writes every changed section together, back to the config file atomically, and hot-reloads in the running app — no restart needed. If the config refuses a value, the field is marked and the section stays unsaved.
 
-> **Auto-refresh and form protection.** The panel polls `/api/state` every 4 seconds to keep the composed system prompt and skill list in sync. It will never overwrite a field you are actively editing — each form section tracks its own "dirty" state and auto-refresh skips it until you save.
+> **Auto-refresh and form protection.** The panel polls `/api/state` every 4 seconds to keep the composed system prompt and skill list in sync. It will never overwrite a field you are actively editing — each form section tracks its own "dirty" state and auto-refresh skips it until you save or discard.
 
 ---
 

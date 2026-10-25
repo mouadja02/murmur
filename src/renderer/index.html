@@ -9,19 +9,47 @@
     <title>murmur</title>
     <style>
       :root {
-        --accent: #a78bfa;
-        --accent-2: #60a5fa;
-        --accent-soft: rgba(167, 139, 250, 0.18);
+        --accent: #ffd93d;
+        --accent-2: #ffd93d;
+        --accent-soft: rgba(255, 217, 61, 0.16);
         --recording: #f87171;
         --processing: #fbbf24;
         --done: #34d399;
         --error: #f87171;
         --pill-bg: rgba(15, 15, 20, 0.78);
         --pill-border: rgba(255, 255, 255, 0.06);
+        /* Toast and tooltip surfaces, named by role (the control panel's dark palette). */
+        --toast-bg: #171b1e;
+        --toast-text: #e9edef;
+        --toast-muted: #a2adb5;
+        --hl: #ffd93d;
+        --hl-hover: #ffe36b;
+        --hl-pressed: #e8c21f;
+        --on-hl: #15181b;
+        --notice: #8dbbff;
+        --focus: #8dbbff;
+        --control-border: #6c7882;
       }
 
       * {
         box-sizing: border-box;
+      }
+
+      /* Keyboard focus is only drawn for keyboard users, never after a click. */
+      button:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
       }
 
       html,
@@ -85,7 +113,7 @@
         padding: 0;
         margin: 0;
         background:
-          radial-gradient(circle at 30% 30%, #1e1e2a 0%, #0e0e14 70%);
+          radial-gradient(circle at 30% 30%, #22282d 0%, #0d1012 70%);
         box-shadow:
           inset 0 0 0 1.5px rgba(255, 255, 255, 0.06),
           0 0 0 0 var(--accent-soft);
@@ -271,16 +299,15 @@
 
       #status-chip {
         position: absolute;
-        top: -22px;
+        top: -24px;
         left: 50%;
         transform: translateX(-50%);
-        font-size: 10px;
-        letter-spacing: 1.4px;
-        text-transform: uppercase;
-        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 10px;
         border-radius: 10px;
         background: rgba(0, 0, 0, 0.6);
-        color: #aaa;
+        color: #c4bde0;
         opacity: 0;
         pointer-events: none;
         white-space: nowrap;
@@ -317,16 +344,16 @@
         width: 278px;
         transform: translateX(-50%) translateY(4px) scale(0.98);
         padding: 11px 12px 10px;
-        font-size: 11px;
-        line-height: 1.35;
-        color: rgba(232, 232, 242, 0.88);
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--toast-text);
         background:
-          linear-gradient(180deg, rgba(20, 20, 29, 0.96), rgba(10, 10, 15, 0.96));
+          linear-gradient(180deg, rgba(27, 32, 36, 0.97), rgba(19, 23, 26, 0.97));
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 12px;
         box-shadow:
           0 18px 44px rgba(0, 0, 0, 0.38),
-          0 0 0 1px rgba(167, 139, 250, 0.04) inset;
+          0 0 0 1px rgba(233, 237, 239, 0.03) inset;
         opacity: 0;
         pointer-events: none;
         z-index: 4;
@@ -359,7 +386,7 @@
 
       .tooltip-name {
         color: #f4f2ff;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 650;
         letter-spacing: 0.01em;
         white-space: nowrap;
@@ -369,7 +396,7 @@
 
       .tooltip-model {
         margin-top: 2px;
-        color: rgba(232, 232, 242, 0.58);
+        color: var(--toast-muted);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -380,11 +407,9 @@
         padding: 2px 7px;
         border-radius: 999px;
         color: var(--accent);
-        background: rgba(167, 139, 250, 0.12);
-        font-size: 9px;
-        font-weight: 700;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
+        background: rgba(255, 217, 61, 0.12);
+        font-size: 12px;
+        font-weight: 600;
       }
 
       .tooltip-rows {
@@ -395,22 +420,20 @@
 
       .tooltip-row {
         display: grid;
-        grid-template-columns: 46px minmax(0, 1fr);
+        grid-template-columns: 56px minmax(0, 1fr);
         align-items: center;
         gap: 8px;
       }
 
       .tooltip-label {
-        color: rgba(232, 232, 242, 0.42);
-        font-size: 9px;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+        color: var(--toast-muted);
+        font-size: 12px;
+        font-weight: 600;
       }
 
       .tooltip-value {
         min-width: 0;
-        color: rgba(232, 232, 242, 0.8);
+        color: var(--toast-text);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -425,10 +448,10 @@
       .tooltip-key {
         padding: 2px 6px;
         border-radius: 6px;
-        color: rgba(244, 242, 255, 0.9);
+        color: rgba(244, 242, 255, 0.95);
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.07);
-        font-size: 10px;
+        font-size: 11px;
       }
 
       .tooltip-foot {
@@ -438,8 +461,8 @@
         gap: 8px;
         padding-top: 8px;
         border-top: 1px solid rgba(255, 255, 255, 0.07);
-        color: rgba(232, 232, 242, 0.54);
-        font-size: 10px;
+        color: var(--toast-muted);
+        font-size: 11px;
       }
 
       .tooltip-dot {
@@ -447,7 +470,7 @@
         height: 6px;
         border-radius: 50%;
         background: var(--accent);
-        box-shadow: 0 0 10px rgba(167, 139, 250, 0.75);
+        box-shadow: 0 0 10px rgba(255, 217, 61, 0.7);
       }
 
       .stream-preview {
@@ -457,17 +480,15 @@
       }
 
       .stream-phase {
-        color: rgba(232, 232, 242, 0.42);
-        font-size: 9px;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+        color: var(--toast-muted);
+        font-size: 12px;
+        font-weight: 600;
         margin-bottom: 4px;
       }
 
       .stream-text {
-        color: rgba(232, 232, 242, 0.72);
-        font-size: 10.5px;
+        color: var(--toast-text);
+        font-size: 11px;
         line-height: 1.4;
         max-height: 72px;
         overflow: hidden;
@@ -484,7 +505,7 @@
         border-radius: 9px;
         background: var(--accent);
         color: #000;
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 700;
         display: none;
         align-items: center;
@@ -495,46 +516,122 @@
       }
       #queue-badge.visible { display: flex; }
 
+      /* Sits above the status chip (24px tall) so the two never overlap. */
       #error-toast {
         position: absolute;
-        bottom: calc(100% + 12px);
+        bottom: calc(100% + 36px);
         left: 50%;
         transform: translateX(-50%);
-        width: 286px;
-        padding: 10px 12px;
-        background: rgba(12, 12, 18, 0.96);
-        border: 1px solid rgba(248, 113, 113, 0.45);
-        border-radius: 10px;
-        font-size: 11px;
-        color: rgba(244, 242, 255, 0.88);
+        width: 296px;
+        padding: 12px;
+        background: var(--toast-bg);
+        border: 1px solid var(--error);
+        border-radius: 12px;
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--toast-text);
         display: none;
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
         z-index: 5;
         pointer-events: all;
-        box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
       }
-      #error-toast.visible { display: flex; }
-      #error-toast.notice { border-color: rgba(255, 255, 255, 0.2); }
+      #error-toast.visible {
+        display: flex;
+        animation: toast-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      #error-toast.notice { border-color: var(--notice); }
 
-      #error-message { line-height: 1.5; }
+      @keyframes toast-in {
+        from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+
+      .toast-body {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+      }
+
+      /* Icon plus colour, so the kind of message never depends on colour alone. */
+      .toast-icon {
+        flex: 0 0 auto;
+        width: 18px;
+        height: 18px;
+        margin-top: 1px;
+        color: var(--error);
+      }
+      #error-toast.notice .toast-icon { color: var(--notice); }
+      .toast-icon .icon-notice { display: none; }
+      #error-toast.notice .toast-icon .icon-error { display: none; }
+      #error-toast.notice .toast-icon .icon-notice { display: inline; }
+
+      #error-message {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
 
       .error-actions {
         display: flex;
-        gap: 6px;
+        gap: 8px;
         align-items: center;
       }
       .error-actions button {
-        padding: 3px 10px;
-        border-radius: 6px;
-        border: 1px solid rgba(255,255,255,0.1);
-        background: rgba(255,255,255,0.05);
-        color: #e6e6f0;
-        font-size: 10px;
+        min-height: 28px;
+        padding: 5px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--control-border);
+        background: transparent;
+        color: var(--toast-text);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
         cursor: pointer;
+        transition: background-color 120ms ease;
       }
-      .error-actions button:hover { background: rgba(255,255,255,0.12); }
-      #dismiss-btn { margin-left: auto; padding: 3px 7px; }
+      .error-actions button:hover { background: rgba(233, 237, 239, 0.12); }
+      .error-actions button:active { background: rgba(233, 237, 239, 0.2); }
+      /* One filled action per toast: the obvious next step. */
+      .error-actions button.primary {
+        background: var(--hl);
+        border-color: transparent;
+        color: var(--on-hl);
+      }
+      .error-actions button.primary:hover { background: var(--hl-hover); }
+      .error-actions button.primary:active { background: var(--hl-pressed); }
+      #dismiss-btn {
+        margin-left: auto;
+        width: 28px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border-color: transparent;
+        color: var(--toast-muted);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #error-toast.visible { animation: none; }
+        #trigger,
+        #logo-wrap,
+        #overlay,
+        .bar {
+          transition-duration: 0.01ms;
+        }
+        .state-recording #trigger::before,
+        .state-recording #trigger::after {
+          animation: none;
+        }
+        .state-transcribing .bar,
+        .state-transcribing-streaming .bar,
+        .state-refining .bar,
+        .state-refining-streaming .bar,
+        .state-injecting .bar {
+          animation: none;
+          opacity: 0.8;
+          transform: scaleY(0.4);
+        }
+      }
     </style>
   </head>
   <body>
@@ -547,7 +644,31 @@
       <div id="info-tooltip">murmur</div>
       <div id="queue-badge" role="status" aria-label="recordings queued"></div>
       <div id="error-toast" role="alert">
-        <span id="error-message"></span>
+        <div class="toast-body">
+          <svg
+            id="toast-icon"
+            class="toast-icon"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <g class="icon-error">
+              <path d="M10 2.5 18 16.5H2z" />
+              <path d="M10 8v4M10 14.4v.1" />
+            </g>
+            <g class="icon-notice">
+              <circle cx="10" cy="10" r="7.5" />
+              <path d="M10 9v5M10 6.1v.1" />
+            </g>
+          </svg>
+          <span id="toast-kind" class="sr-only"></span>
+          <span id="error-message"></span>
+        </div>
         <div class="error-actions">
           <button id="retry-btn" type="button">Retry</button>
           <button
@@ -559,7 +680,9 @@
             Insert raw
           </button>
           <button id="log-btn" type="button">Logs</button>
-          <button id="dismiss-btn" type="button" aria-label="Dismiss">&#x2715;</button>
+          <button id="dismiss-btn" type="button" aria-label="Dismiss" title="Dismiss (Esc)">
+            &#x2715;
+          </button>
         </div>
       </div>
     </div>

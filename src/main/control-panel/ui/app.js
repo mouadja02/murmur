@@ -1,9 +1,28 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-// Tracks which form sections have unsaved user edits so auto-refresh never
-// overwrites in-progress work.  Cleared on a successful save of that section.
-const dirtyForms = new Set();
+/**
+ * Tracks which form sections have unsaved user edits so auto-refresh never
+ * overwrites in-progress work.  Cleared on a successful save of that section.
+ * Every change redraws the save bar and the nav markers.
+ */
+class DirtySet extends Set {
+  add(value) {
+    const result = super.add(value);
+    renderSaveBar();
+    return result;
+  }
+  delete(value) {
+    const result = super.delete(value);
+    renderSaveBar();
+    return result;
+  }
+  clear() {
+    super.clear();
+    renderSaveBar();
+  }
+}
+const dirtyForms = new DirtySet();
 
 const state = {
   config: null,
@@ -161,10 +180,9 @@ function toast(message, kind = '') {
   toast._timer = setTimeout(() => el.classList.remove('show'), 2400);
 }
 
-function setSaveStatus(text, kind = '') {
-  const el = $('#save-status');
-  el.textContent = text;
-  el.style.color = kind === 'error' ? 'var(--bad)' : kind === 'ok' ? 'var(--good)' : '';
+/** Announced to screen readers; the visible feedback is the save bar and the toast. */
+function setSaveStatus(text) {
+  $('#save-status').textContent = text;
 }
 
 function applyStateToDom() {
@@ -229,6 +247,7 @@ function applyStateToDom() {
     $('#cfg-configFilePath').value = c.configFilePath;
   }
 
+  syncSliders();
   renderSkillList();
   if (state.selectedSkillId) {
     if (state.selectedSkillId === '__new__') {
@@ -307,18 +326,23 @@ function setFieldLocked(input, info, source) {
   const wrapper = input.closest('.field') ?? input.parentElement;
   const existing = wrapper?.querySelector('.override-chip');
 
+  // A slider or Record button beside the field follows the field's lock.
+  const companions = [input._range, input._record].filter(Boolean);
+
   if (!source) {
     input.readOnly = false;
     input.disabled = false;
     input.classList.remove('locked');
+    for (const c of companions) c.disabled = false;
     existing?.remove();
     return;
   }
 
-  // SELECTs don't honour readOnly, so we disable them instead.
-  if (input.tagName === 'SELECT') input.disabled = true;
+  // SELECTs and checkboxes don't honour readOnly, so we disable them instead.
+  if (input.tagName === 'SELECT' || input.type === 'checkbox') input.disabled = true;
   else input.readOnly = true;
   input.classList.add('locked');
+  for (const c of companions) c.disabled = true;
 
   const label =
     source === 'cli' ? `Locked by ${info.flag} CLI flag` : `Locked by ${info.env} env var`;
@@ -388,7 +412,16 @@ function renderSkillList() {
         ${s.description ? `<span class="desc">${escapeHtml(s.description)}</span>` : ''}
       </div>
     `;
+    // Focusable and operable from the keyboard, like the buttons beside it.
+    li.tabIndex = 0;
+    li.setAttribute('role', 'button');
+    li.setAttribute('aria-pressed', String(state.selectedSkillId === s.id));
     li.addEventListener('click', () => selectSkill(s.id));
+    li.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      selectSkill(s.id);
+    });
     list.appendChild(li);
   }
 }
@@ -516,7 +549,12 @@ function _activeTab() {
 }
 
 function setTab(name) {
-  for (const t of $$('.tab')) t.classList.toggle('active', t.dataset.tab === name);
+  for (const t of $$('.tab')) {
+    const active = t.dataset.tab === name;
+    t.classList.toggle('active', active);
+    if (active) t.setAttribute('aria-current', 'page');
+    else t.removeAttribute('aria-current');
+  }
   for (const p of $$('.pane')) p.classList.toggle('active', p.dataset.pane === name);
   history.replaceState(null, '', `#${name}`);
 }
@@ -534,29 +572,12 @@ function wireSystemPrompt() {
     dirtyForms.add('system-prompt');
     updatePromptCharCount();
   });
-  $('#btn-save-prompt').addEventListener('click', async () => {
-    try {
-      setSaveStatus('Saving…');
-      await api('PUT', '/api/system-prompt', { prompt: $('#system-prompt').value });
-      dirtyForms.delete('system-prompt');
-      setSaveStatus('Saved', 'ok');
-      toast('System prompt saved', 'success');
-      await refresh();
-    } catch (err) {
-      setSaveStatus('Error', 'error');
-      toast(err.message, 'error');
-    }
-  });
-  $('#btn-reset-prompt').addEventListener('click', async () => {
-    if (!confirm('Reset system prompt to the built-in default?')) return;
-    try {
-      await api('PUT', '/api/system-prompt', { prompt: DEFAULT_PROMPT });
-      dirtyForms.delete('system-prompt');
-      toast('Reset to default', 'success');
-      await refresh();
-    } catch (err) {
-      toast(err.message, 'error');
-    }
+  // Like every other edit, resetting waits for "Save changes", so Discard undoes it.
+  $('#btn-reset-prompt').addEventListener('click', () => {
+    if ($('#system-prompt').readOnly) return;
+    $('#system-prompt').value = DEFAULT_PROMPT;
+    dirtyForms.add('system-prompt');
+    updatePromptCharCount();
   });
 }
 
@@ -665,34 +686,6 @@ function applySnapshot(snap) {
   applyConfigErrorToDom();
 }
 
-function readConfigForm(extra = {}) {
-  const payload = {
-    provider: $('#cfg-provider').value,
-    baseUrl: $('#cfg-baseUrl').value.trim(),
-    model: $('#cfg-model').value.trim(),
-    temperature: Number($('#cfg-temperature').value),
-    whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
-    whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
-    hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
-    hotkeyMode: $('#cfg-hotkeyMode').value,
-    toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
-    clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
-    clipboardRetention: $('#cfg-clipboardRetention').value,
-    injectionMethod: $('#cfg-injectionMethod').value,
-    focusChangePolicy: $('#cfg-focusChangePolicy').value,
-    progressiveInjection: $('#cfg-progressiveInjection').checked,
-    ...readVoiceForm(),
-    logsDir: $('#cfg-logsDir').value.trim(),
-    logMode: $('#cfg-logMode').value,
-    skillsDir: $('#cfg-skillsDir').value.trim(),
-    controlPanelPort: Number($('#cfg-controlPanelPort').value),
-    ...extra,
-  };
-  const apiKey = $('#cfg-apiKey').value;
-  if (apiKey) payload.apiKey = apiKey;
-  return payload;
-}
-
 function wireProvider() {
   // Mark provider form dirty whenever any field is touched.
   for (const id of ['cfg-provider', 'cfg-baseUrl', 'cfg-model', 'cfg-apiKey', 'cfg-temperature']) {
@@ -702,34 +695,18 @@ function wireProvider() {
     el.addEventListener('change', () => dirtyForms.add('provider'));
   }
 
-  $('#provider-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const apiKey = $('#cfg-apiKey').value;
-    const patch = {
-      provider: $('#cfg-provider').value,
-      baseUrl: $('#cfg-baseUrl').value.trim(),
-      model: $('#cfg-model').value.trim(),
-      temperature: Number($('#cfg-temperature').value),
-    };
-    if (apiKey) patch.apiKey = apiKey;
-    else if (apiKey === '' && $('#cfg-apiKey').dataset.clear === '1') patch.apiKey = null;
-    try {
-      const snap = await api('PUT', '/api/config', patch);
-      clearFieldErrors();
-      dirtyForms.delete('provider');
-      applySnapshot(snap);
-      // Evaluate the online warning only after the user deliberately saves.
-      updateOnlineWarning(patch.baseUrl);
-      toast('Provider saved', 'success');
-    } catch (err) {
-      showFieldErrors(err.rejected);
-      toast(err.message, 'error');
-    }
-  });
+  // Saving goes through the save bar, never a per-form submit.
+  $('#provider-form').addEventListener('submit', (e) => e.preventDefault());
   $('#btn-test-llm').addEventListener('click', async () => {
     const el = $('#llm-test-result');
+    // The test uses the saved provider, so it would say nothing about unsaved edits.
+    if (dirtyForms.has('provider')) {
+      el.textContent = 'Save your changes first. The test uses the saved provider settings.';
+      el.style.color = 'var(--caution)';
+      return;
+    }
     el.textContent = 'Testing…';
-    el.style.color = 'var(--text-faint)';
+    el.style.color = 'var(--text-dim)';
     try {
       const res = await api('POST', '/api/test/llm', {});
       if (res.ok) {
@@ -786,6 +763,8 @@ function wireProvider() {
   const checkBaseUrl = () => {
     const url = $('#cfg-baseUrl').value.trim();
     const provider = $('#cfg-provider').value;
+    // The badge follows what is typed; the warning banner waits for a deliberate choice.
+    updateLocalityBadge(url);
     const hint = $('#baseurl-hint');
     if (!hint) return;
     if (provider === 'openai-compat' && url && !/\/v\d+\/?$/.test(url.replace(/\/$/, ''))) {
@@ -802,55 +781,22 @@ function wireProvider() {
   $('#goto-model-guide')?.addEventListener('click', () => setTab('model-guide'));
 }
 
-function wireGenericForm(selector, extract, dirtyKey) {
+/** Marks `dirtyKey` dirty on any edit in the form. Saving is the save bar's job. */
+function wireGenericForm(selector, dirtyKey) {
   const form = $(selector);
-  if (dirtyKey) {
-    for (const el of form.querySelectorAll('input, textarea, select')) {
-      el.addEventListener('input', () => dirtyForms.add(dirtyKey));
-      el.addEventListener('change', () => dirtyForms.add(dirtyKey));
-    }
+  for (const el of form.querySelectorAll('input, textarea, select')) {
+    el.addEventListener('input', () => dirtyForms.add(dirtyKey));
+    el.addEventListener('change', () => dirtyForms.add(dirtyKey));
   }
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      const snap = await api('PUT', '/api/config', extract());
-      clearFieldErrors();
-      if (dirtyKey) dirtyForms.delete(dirtyKey);
-      applySnapshot(snap);
-      toast('Saved', 'success');
-    } catch (err) {
-      showFieldErrors(err.rejected);
-      toast(err.message, 'error');
-    }
-  });
+  form.addEventListener('submit', (e) => e.preventDefault());
 }
 
 function wireWhisper() {
-  wireGenericForm(
-    '#whisper-form',
-    () => ({
-      whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
-      whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
-    }),
-    'whisper',
-  );
+  wireGenericForm('#whisper-form', 'whisper');
 }
 
 function wireHotkeys() {
-  wireGenericForm(
-    '#hotkeys-form',
-    () => ({
-      hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
-      hotkeyMode: $('#cfg-hotkeyMode').value,
-      toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
-      clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
-      clipboardRetention: $('#cfg-clipboardRetention').value,
-      injectionMethod: $('#cfg-injectionMethod').value,
-      focusChangePolicy: $('#cfg-focusChangePolicy').value,
-      progressiveInjection: $('#cfg-progressiveInjection').checked,
-    }),
-    'hotkeys',
-  );
+  wireGenericForm('#hotkeys-form', 'hotkeys');
 }
 
 /** Throws a readable error so the save toast explains what is wrong. */
@@ -885,39 +831,166 @@ function readVoiceForm() {
 }
 
 function wireVoice() {
-  wireGenericForm('#voice-form', readVoiceForm, 'voice');
+  wireGenericForm('#voice-form', 'voice');
 }
 
 function wirePaths() {
-  wireGenericForm(
-    '#paths-form',
-    () => ({
+  wireGenericForm('#paths-form', 'paths');
+}
+
+// ── One save model ────────────────────────────────────────────
+
+/**
+ * What each config section sends. Only sections with unsaved edits are read, merged
+ * into one PUT /api/config, so the server validates and writes them together and
+ * reports any rejected field by name.
+ */
+const SECTIONS = {
+  provider: {
+    label: 'Provider',
+    read: () => {
+      const patch = {
+        provider: $('#cfg-provider').value,
+        baseUrl: $('#cfg-baseUrl').value.trim(),
+        model: $('#cfg-model').value.trim(),
+        temperature: Number($('#cfg-temperature').value),
+      };
+      const apiKey = $('#cfg-apiKey').value;
+      if (apiKey) patch.apiKey = apiKey;
+      else if ($('#cfg-apiKey').dataset.clear === '1') patch.apiKey = null;
+      return patch;
+    },
+  },
+  whisper: {
+    label: 'Whisper',
+    read: () => ({
+      whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
+      whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
+    }),
+  },
+  hotkeys: {
+    label: 'Hotkeys',
+    read: () => ({
+      hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
+      hotkeyMode: $('#cfg-hotkeyMode').value,
+      toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
+      clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
+      clipboardRetention: $('#cfg-clipboardRetention').value,
+      injectionMethod: $('#cfg-injectionMethod').value,
+      focusChangePolicy: $('#cfg-focusChangePolicy').value,
+      progressiveInjection: $('#cfg-progressiveInjection').checked,
+    }),
+  },
+  voice: { label: 'Voice & context', read: readVoiceForm },
+  paths: {
+    label: 'Paths',
+    read: () => ({
       logsDir: $('#cfg-logsDir').value.trim(),
       logMode: $('#cfg-logMode').value,
       skillsDir: $('#cfg-skillsDir').value.trim(),
       controlPanelPort: Number($('#cfg-controlPanelPort').value),
     }),
-    'paths',
-  );
+  },
+  'system-prompt': { label: 'System prompt' },
+};
+
+let saving = false;
+
+/** Shows the bar only while something is unsaved, and marks those sections in the nav. */
+function renderSaveBar() {
+  const bar = $('#savebar');
+  if (!bar) return;
+  const keys = [...dirtyForms].filter((k) => SECTIONS[k]);
+  bar.hidden = keys.length === 0;
+  const labels = keys.map((k) => SECTIONS[k].label);
+  $('#savebar-text').innerHTML = keys.length
+    ? `<strong>Unsaved changes</strong> in ${escapeHtml(labels.join(', '))}`
+    : '';
+  for (const t of $$('.tab')) {
+    const dirty = keys.includes(t.dataset.tab);
+    const suffix = t.querySelector('.tab-dirty');
+    if (dirty) {
+      t.dataset.dirty = '1';
+      // Keeps the button's own name ("Hotkeys") and adds to it, instead of replacing it.
+      if (!suffix) {
+        const note = document.createElement('span');
+        note.className = 'sr-only tab-dirty';
+        note.textContent = ' (unsaved changes)';
+        t.appendChild(note);
+      }
+    } else {
+      delete t.dataset.dirty;
+      suffix?.remove();
+    }
+  }
+  const saveBtn = $('#btn-save');
+  if (saveBtn) saveBtn.disabled = saving;
 }
 
-function wireSaveAll() {
-  $('#btn-save-all').addEventListener('click', async () => {
-    try {
-      setSaveStatus('Saving…');
-      await api('PUT', '/api/system-prompt', { prompt: $('#system-prompt').value });
-      await api('PUT', '/api/config', readConfigForm());
+async function saveChanges() {
+  if (saving || dirtyForms.size === 0) return;
+  saving = true;
+  renderSaveBar();
+  setSaveStatus('Saving…');
+  const configKeys = [...dirtyForms].filter((k) => SECTIONS[k]?.read);
+  try {
+    const patch = {};
+    for (const key of configKeys) Object.assign(patch, SECTIONS[key].read());
+    if (configKeys.length) {
+      const snap = await api('PUT', '/api/config', patch);
       clearFieldErrors();
-      dirtyForms.clear();
-      setSaveStatus('Saved', 'ok');
-      toast('Everything saved', 'success');
+      for (const key of configKeys) dirtyForms.delete(key);
+      applySnapshot(snap);
+    }
+    if (dirtyForms.has('system-prompt')) {
+      await api('PUT', '/api/system-prompt', { prompt: $('#system-prompt').value });
+      dirtyForms.delete('system-prompt');
       await refresh();
-    } catch (err) {
-      showFieldErrors(err.rejected);
-      setSaveStatus('Error', 'error');
-      toast(err.message, 'error');
+    }
+    setSaveStatus('Saved');
+    toast('Changes saved', 'success');
+  } catch (err) {
+    // The sections that failed stay dirty, so nothing that was refused looks saved.
+    showFieldErrors(err.rejected);
+    setSaveStatus('Not saved');
+    toast(err.message, 'error');
+  } finally {
+    saving = false;
+    renderSaveBar();
+  }
+}
+
+function discardChanges() {
+  dirtyForms.clear();
+  clearFieldErrors();
+  applyStateToDom();
+  applyOverridesToDom();
+  applyShadowedEnvToDom();
+  setSaveStatus('Changes discarded');
+}
+
+function wireSaveBar() {
+  // Editing a field the server refused clears its "Not saved" note; the next save re-checks it.
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLElement) || !el.classList.contains('invalid')) return;
+    el.classList.remove('invalid');
+    (el.closest('.field') ?? el.parentElement)?.querySelector('.field-error')?.remove();
+  });
+  $('#btn-save').addEventListener('click', saveChanges);
+  $('#btn-discard').addEventListener('click', discardChanges);
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      saveChanges();
     }
   });
+  window.addEventListener('beforeunload', (e) => {
+    if (dirtyForms.size === 0) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+  renderSaveBar();
 }
 
 const DEFAULT_PROMPT = `You refine a raw voice transcription into a high-quality prompt for an AI coding assistant.
@@ -956,6 +1029,48 @@ function isDomainUrl(url) {
   }
 }
 
+/**
+ * Where prompts and transcriptions go for a base URL: this machine ('local'), a
+ * named host presumed to be a third party ('cloud', the same rule as the warning
+ * banner), another address Murmur cannot classify ('network'), or nothing to show
+ * ('unknown'). Pure, so it is unit-tested without a DOM.
+ */
+function providerLocality(baseUrl) {
+  let host;
+  try {
+    host = new URL(String(baseUrl ?? '').trim()).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  } catch {
+    return 'unknown';
+  }
+  if (!host) return 'unknown';
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '::1' ||
+    /^127(\.\d{1,3}){3}$/.test(host)
+  ) {
+    return 'local';
+  }
+  return isDomainUrl(baseUrl) ? 'cloud' : 'network';
+}
+
+const LOCALITY_LABEL = { local: 'Local', cloud: 'Cloud', network: 'Network' };
+const LOCALITY_TITLE = {
+  local: 'Requests stay on this machine',
+  cloud: 'Requests go to a third-party server',
+  network: 'Requests go to another machine on your network',
+};
+
+function updateLocalityBadge(baseUrl) {
+  const el = $('#provider-locality');
+  if (!el) return;
+  const kind = providerLocality(baseUrl);
+  el.dataset.locality = kind;
+  el.classList.toggle('hidden', kind === 'unknown');
+  el.textContent = LOCALITY_LABEL[kind] ?? '';
+  el.title = LOCALITY_TITLE[kind] ?? '';
+}
+
 function updateBaseUrlHint(provider, url) {
   const hint = $('#baseurl-hint');
   if (!hint) return;
@@ -969,12 +1084,233 @@ function updateBaseUrlHint(provider, url) {
 }
 
 function updateOnlineWarning(baseUrl) {
+  updateLocalityBadge(baseUrl);
   const el = $('#online-warning');
   if (!el) return;
   if (baseUrl && isDomainUrl(baseUrl)) {
     el.classList.remove('hidden');
   } else {
     el.classList.add('hidden');
+  }
+}
+
+// ── Sliders ───────────────────────────────────────────────────
+
+/** Fills the track up to the thumb (the CSS draws the highlighter from --fill). */
+function paintRange(range) {
+  const min = Number(range.min);
+  const span = Number(range.max) - min;
+  const pct = span > 0 ? ((Number(range.value) - min) / span) * 100 : 0;
+  range.style.setProperty('--fill', `${Math.min(100, Math.max(0, pct))}%`);
+}
+
+/**
+ * Pairs each `input[type=number][data-slider]` with a range input and a unit.
+ * The number input stays the source of truth (ids, locks, saving all use it).
+ */
+function enhanceSliders() {
+  for (const num of $$('input[type="number"][data-slider]')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'slider';
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = num.min;
+    range.max = num.max;
+    range.step = num.step || '1';
+    const label = document.querySelector(`label[for="${num.id}"]`);
+    if (label) range.setAttribute('aria-label', label.textContent.trim());
+    num.before(wrap);
+    wrap.append(range, num);
+    if (num.dataset.unit) {
+      const unit = document.createElement('span');
+      unit.className = 'unit';
+      unit.textContent = num.dataset.unit;
+      wrap.append(unit);
+    }
+    range.addEventListener('input', () => {
+      num.value = range.value;
+      paintRange(range);
+      num.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    num.addEventListener('input', () => {
+      if (num.value !== '') range.value = num.value;
+      paintRange(range);
+    });
+    num._range = range;
+  }
+}
+
+/** Re-reads every number input into its slider (values are also set from code). */
+function syncSliders() {
+  for (const num of $$('input[type="number"][data-slider]')) {
+    const range = num._range;
+    if (!range) continue;
+    if (num.value !== '') range.value = num.value;
+    paintRange(range);
+  }
+}
+
+// ── Hotkey capture ────────────────────────────────────────────
+
+/**
+ * Names the hotkey library accepts (UiohookKey) that a KeyboardEvent.code can produce.
+ * Letters and digits are handled separately (KeyA -> A, Digit1 -> 1).
+ */
+const CAPTURABLE_CODES = new Set([
+  ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`),
+  'Space',
+  'Enter',
+  'Tab',
+  'Backspace',
+  'CapsLock',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'Insert',
+  'Delete',
+  'ArrowLeft',
+  'ArrowUp',
+  'ArrowRight',
+  'ArrowDown',
+  'Semicolon',
+  'Equal',
+  'Comma',
+  'Minus',
+  'Period',
+  'Slash',
+  'Backquote',
+  'BracketLeft',
+  'Backslash',
+  'BracketRight',
+  'Quote',
+  'PrintScreen',
+  'ScrollLock',
+  'NumLock',
+  ...Array.from({ length: 10 }, (_, i) => `Numpad${i}`),
+  'NumpadMultiply',
+  'NumpadAdd',
+  'NumpadSubtract',
+  'NumpadDecimal',
+  'NumpadDivide',
+  'NumpadEnter',
+]);
+
+const MODIFIER_CODES = new Set([
+  'ControlLeft',
+  'ControlRight',
+  'ShiftLeft',
+  'ShiftRight',
+  'AltLeft',
+  'AltRight',
+  'MetaLeft',
+  'MetaRight',
+]);
+
+/** A key that is safe to bind with no modifier: it does not type anything. */
+const BARE_OK = /^F([1-9]|1\d|2[0-4])$|^(PrintScreen|ScrollLock)$/;
+
+/**
+ * Turns a keydown into a combo string in the syntax the hotkey parser reads
+ * ("Ctrl+Shift+Space"). Pure, so it is unit-tested without a DOM.
+ *   { done: false }            only modifiers so far: keep listening
+ *   { done: false, error }     this press cannot be used: say why, keep listening
+ *   { done: true, combo }      finished
+ */
+function describeKeyCapture(e) {
+  if (MODIFIER_CODES.has(e.code)) return { done: false };
+  const letter = /^Key([A-Z])$/.exec(e.code) ?? /^Digit(\d)$/.exec(e.code);
+  const key = letter ? letter[1] : CAPTURABLE_CODES.has(e.code) ? e.code : null;
+  if (!key) return { done: false, error: 'That key cannot be used as a hotkey.' };
+  const mods = [];
+  if (e.ctrlKey) mods.push('Ctrl');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.altKey) mods.push('Alt');
+  if (e.metaKey) mods.push('Meta');
+  if (mods.length === 0 && !BARE_OK.test(key)) {
+    return {
+      done: false,
+      error: 'Add Ctrl, Alt, Shift or Meta, or use a function key, so normal typing is unaffected.',
+    };
+  }
+  return { done: true, combo: [...mods, key].join('+') };
+}
+
+function wireHotkeyCapture() {
+  for (const button of $$('button[data-record]')) {
+    const input = document.getElementById(button.dataset.record);
+    if (!input) continue;
+    input._record = button;
+    const field = input.closest('.field') ?? input.parentElement;
+    let previous = '';
+    let note = null;
+
+    const say = (text) => {
+      if (!text) {
+        note?.remove();
+        note = null;
+        return;
+      }
+      if (!note) {
+        note = document.createElement('span');
+        note.className = 'field-hint';
+        note.setAttribute('role', 'status');
+        field.appendChild(note);
+      }
+      note.textContent = text;
+    };
+
+    const stop = () => {
+      input.classList.remove('capturing');
+      input.placeholder = '';
+      button.textContent = 'Record';
+      input.removeEventListener('keydown', onKey, true);
+      input.removeEventListener('blur', cancel);
+    };
+
+    function cancel() {
+      input.value = previous;
+      stop();
+      say('');
+    }
+
+    function onKey(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === 'Escape') {
+        cancel();
+        return;
+      }
+      const result = describeKeyCapture(e);
+      if (!result.done) {
+        say(result.error ?? 'Now press the other key.');
+        return;
+      }
+      input.value = result.combo;
+      stop();
+      say('');
+      dirtyForms.add('hotkeys');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // Keep focus in the field while the button is pressed, or the field's blur would
+    // cancel the capture before the click could turn it off (and then start it again).
+    button.addEventListener('mousedown', (e) => e.preventDefault());
+    button.addEventListener('click', () => {
+      if (input.classList.contains('capturing')) {
+        cancel();
+        return;
+      }
+      previous = input.value;
+      input.classList.add('capturing');
+      input.value = '';
+      input.placeholder = 'Press the keys…';
+      button.textContent = 'Cancel';
+      say('Press the keys you want to use. Esc cancels.');
+      input.addEventListener('keydown', onKey, true);
+      input.addEventListener('blur', cancel);
+      input.focus();
+    });
   }
 }
 
@@ -1091,6 +1427,9 @@ function wireImportSkill() {
   });
 }
 
+// Controls first: the form wiring below listens on the elements they create.
+enhanceSliders();
+wireHotkeyCapture();
 wireTabs();
 wireSystemPrompt();
 wireSkills();
@@ -1099,7 +1438,7 @@ wireWhisper();
 wireHotkeys();
 wireVoice();
 wirePaths();
-wireSaveAll();
+wireSaveBar();
 wireOverlayControls();
 wireImportSkill();
 

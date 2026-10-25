@@ -111,10 +111,14 @@ describe('control panel: push-to-talk mode and focus-change policy', () => {
   it('reads and saves both fields from the Hotkeys form script', async () => {
     await start(path.join(tempDir, 'config.json'));
     const js = await (await fetch(`${handle.url}/app.js`)).text();
+    // Saving is one path: the save bar reads every section that has unsaved edits.
+    const hotkeysSection = /hotkeys:\s*\{[\s\S]*?\n {2}\},/.exec(js)?.[0] ?? '';
+    assert.ok(hotkeysSection, 'the save bar has a Hotkeys section');
     for (const key of ['hotkeyMode', 'focusChangePolicy']) {
-      const reads = js.match(new RegExp(`\\$\\('#cfg-${key}'\\)\\.value`, 'g')) ?? [];
-      // once to fill the form, twice more to save it (save-all and the Hotkeys form)
-      assert.ok(reads.length >= 3, `${key} is wired to the form (${reads.length} uses)`);
+      const uses = js.match(new RegExp(`\\$\\('#cfg-${key}'\\)\\.value`, 'g')) ?? [];
+      // once to fill the form, once to save it
+      assert.ok(uses.length >= 2, `${key} is wired to the form (${uses.length} uses)`);
+      assert.match(hotkeysSection, new RegExp(`${key}: \\$\\('#cfg-${key}'\\)\\.value`), key);
     }
     assert.match(js, /MURMUR_HOTKEY_MODE/);
     assert.match(js, /MURMUR_FOCUS_CHANGE_POLICY/);

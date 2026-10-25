@@ -105,6 +105,7 @@ const infoTooltip = required<HTMLDivElement>('info-tooltip');
 const queueBadge = required<HTMLDivElement>('queue-badge');
 const errorToast = required<HTMLDivElement>('error-toast');
 const errorMsgEl = required<HTMLSpanElement>('error-message');
+const toastKindEl = required<HTMLSpanElement>('toast-kind');
 const retryBtn = required<HTMLButtonElement>('retry-btn');
 const insertRawBtn = required<HTMLButtonElement>('insert-raw-btn');
 const logBtn = required<HTMLButtonElement>('log-btn');
@@ -317,12 +318,23 @@ window.murmur.onQueueDepth((depth) => {
 
 window.murmur.onError((payload) => {
   lastErrorSessionDir = payload.sessionDir;
+  // A notice (e.g. "copied instead of typed") has nothing to retry or insert, and
+  // is not urgent: screen readers get it politely, errors assertively. The role is
+  // set before the text so the change is announced with the right priority.
+  errorToast.setAttribute('role', payload.notice === true ? 'status' : 'alert');
+  toastKindEl.textContent = payload.notice === true ? 'Notice: ' : 'Error: ';
   errorMsgEl.textContent = payload.message;
-  // A notice (e.g. "copied instead of typed") has nothing to retry or insert.
   errorToast.classList.toggle('notice', payload.notice === true);
   retryBtn.hidden = payload.notice === true;
+  // Retry is the one filled action: it has no side effect on the target window,
+  // whereas Insert raw writes unrefined text there and stays a deliberate second choice.
+  retryBtn.classList.toggle('primary', payload.notice !== true);
   insertRawBtn.hidden = payload.notice === true || payload.canInsertRaw !== true;
   errorToast.classList.add('visible');
+});
+
+errorToast.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') dismissErrorToast();
 });
 
 retryBtn.addEventListener('click', () => {
