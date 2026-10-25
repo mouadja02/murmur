@@ -147,6 +147,36 @@ describe('headless runtime', () => {
     await runtime.stop();
   });
 
+  it('rejects record({ inject: true }) before creating a recorder', async () => {
+    let recordersCreated = 0;
+    const runtime = await createRuntime({
+      ...runtimeOpts(tmp),
+      startControlPanel: async () => ({ port: 1, url: 'http://localhost:1', stop: async () => {} }),
+      startMcpServer: async () => ({
+        port: 2,
+        url: 'http://localhost:2/mcp',
+        stop: async () => {},
+      }),
+    });
+    const pipeline = runtime.pipeline;
+    // The real headless pipeline builds its recorder from `recorderCommand`;
+    // spying on the factory proves nothing was started.
+    const original = pipeline.deps.createRecorder;
+    pipeline.deps.createRecorder = () => {
+      recordersCreated += 1;
+      return original();
+    };
+
+    await assert.rejects(
+      () => pipeline.record({ durationMs: 1, inject: true }),
+      /injection is unavailable/i,
+    );
+
+    assert.equal(recordersCreated, 0);
+    assert.equal(pipeline.isBusy(), false);
+    await runtime.stop();
+  });
+
   it('stops control panel when MCP startup fails', async () => {
     let panelStopped = false;
     await assert.rejects(

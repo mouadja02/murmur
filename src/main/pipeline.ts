@@ -39,6 +39,12 @@ const AUDIO_TIMEOUT_MS = 10_000;
 const STATUS_LINGER_MS = 1_500;
 /** Captures shorter than this are accidental hotkey taps, not prompts. */
 const MIN_SPEECH_MS = 250;
+/**
+ * Longest headless (MCP) recording. Bounds the microphone-on time and the PCM
+ * held in memory (~32 KB/s) when nothing ever calls stop.
+ */
+const DEFAULT_MAX_RECORD_MS = 5 * 60_000;
+const RECORDING_CANCELLED = 'recording cancelled';
 
 /**
  * Thrown when a capture contains no speech (too short, or whisper only heard
@@ -81,6 +87,8 @@ export interface ProcessPcmResult {
   transcription: string;
   sessionDir: string;
   stopReason: StopReason;
+  /** Headless recording only: capture was cut off at the maximum recording length. */
+  stoppedAtLimit?: boolean;
 }
 
 export interface ProcessPcmOptions {
@@ -101,6 +109,12 @@ export interface RecordOptions {
   durationMs?: number;
   inject?: boolean;
   skillIds?: string[];
+  /**
+   * Aborting while the microphone is open stops the recorder, discards the
+   * audio and rejects the record. Once capture has stopped and processing has
+   * begun, aborting no longer interrupts it.
+   */
+  signal?: AbortSignal;
 }
 
 export interface PipelineDeps {
@@ -120,6 +134,8 @@ export interface PipelineDeps {
   whisperSupportsStreaming?: boolean;
   /** Snapshot active window / clipboard / screenshot when a capture starts. */
   captureContext?: () => Promise<CapturedContext | null>;
+  /** Cap for headless `record()`; defaults to 5 minutes. */
+  maxRecordMs?: number;
 }
 
 interface QueuedCapture {
@@ -157,6 +173,8 @@ export class Pipeline {
   private recordStopTimer: NodeJS.Timeout | null = null;
   private pendingHeadlessResolve: ((v: ProcessPcmResult) => void) | null = null;
   private pendingHeadlessReject: ((err: unknown) => void) | null = null;
+  /** Set once the headless recorder was told to stop; cancellation no longer applies. */
+  private headlessFinishing = false;
   private tokenListeners = new Set<(token: string, phase: TokenPhase) => void>();
   private lastTranscription: string | null = null;
   private lastContext: CapturedContext | null = null;
@@ -508,6 +526,7 @@ export class Pipeline {
     this.pendingHeadless = null;
     this.pendingHeadlessResolve = null;
     this.pendingHeadlessReject = null;
+    this.headlessFinishing = false;
     this.state = 'idle';
     if (err !== undefined) {
       console.error('[pipeline] headless recording aborted:', err);
@@ -906,6 +925,11 @@ export class Pipeline {
   }
 
   async record(opts: RecordOptions = {}): Promise<ProcessPcmResult> {
+    if (opts.inject && !this.deps.inject) {
+      throw new Error(
+        'injection is unavailable: this Murmur instance has no text inserter (headless serve mode)',
+      );
+    }
     if (this.hasHeadlessPending() || this.state !== 'idle') {
       throw new Error('recording already in progress');
     }
@@ -913,6 +937,8 @@ export class Pipeline {
     if (!createRecorder) {
       throw new Error('createRecorder is not configured');
     }
+    const signal = opts.signal;
+    if (signal?.aborted) throw new Error(RECORDING_CANCELLED);
 
     const recorder = createRecorder();
     const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
@@ -922,6 +948,10 @@ export class Pipeline {
       context: this.beginContext(),
     };
 
+    const done = new Promise<ProcessPcmResult>((resolve, reject) => {
+      this.pendingHeadlessResolve = resolve;
+      this.pendingHeadlessReject = reject;
+    });
     this.headlessRecorder = recorder;
     this.pendingHeadless = { recorder, session, processOpts };
     this.cancelIdle();
@@ -936,20 +966,29 @@ export class Pipeline {
       throw err;
     }
 
-    if (opts.durationMs != null) {
-      await new Promise<void>((resolve) => {
-        this.recordStopTimer = setTimeout(() => {
-          this.recordStopTimer = null;
-          resolve();
-        }, opts.durationMs);
-      });
-      return this.finishHeadlessRecord();
+    if (signal?.aborted) {
+      this.cancelHeadlessRecording(recorder);
+      return done;
     }
+    recorder.onUnexpectedExit?.((err) => this.failHeadlessRecording(recorder, err));
 
-    return new Promise<ProcessPcmResult>((resolve, reject) => {
-      this.pendingHeadlessResolve = resolve;
-      this.pendingHeadlessReject = reject;
-    });
+    const maxMs = this.deps.maxRecordMs ?? DEFAULT_MAX_RECORD_MS;
+    const requestedMs = opts.durationMs ?? Number.POSITIVE_INFINITY;
+    const atLimit = requestedMs > maxMs;
+    this.recordStopTimer = setTimeout(
+      () => {
+        this.recordStopTimer = null;
+        if (atLimit) console.warn(`[pipeline] headless recording reached the ${maxMs} ms limit`);
+        // A failure reaches the caller through `done`.
+        this.finishHeadlessRecord({ atLimit }).catch(() => undefined);
+      },
+      Math.min(requestedMs, maxMs),
+    );
+
+    if (!signal) return done;
+    const onAbort = () => this.cancelHeadlessRecording(recorder);
+    signal.addEventListener('abort', onAbort, { once: true });
+    return done.finally(() => signal.removeEventListener('abort', onAbort));
   }
 
   async stopRecording(): Promise<ProcessPcmResult> {
@@ -963,11 +1002,51 @@ export class Pipeline {
     return this.finishHeadlessRecord();
   }
 
-  private async finishHeadlessRecord(): Promise<ProcessPcmResult> {
+  /**
+   * Stops the microphone and drops the audio of a headless recording whose
+   * caller is gone. No-op once the recorder was told to stop (processing then
+   * runs to completion) or if `recorder` is no longer the active one.
+   */
+  private cancelHeadlessRecording(recorder: AudioRecorder): void {
+    if (this.pendingHeadless?.recorder !== recorder || this.headlessFinishing) return;
+    const rejectPending = this.pendingHeadlessReject;
+    const { session } = this.pendingHeadless;
+    console.warn('[pipeline] headless recording cancelled by its caller');
+    this.abortHeadlessRecording();
+    // Stopping ends the capture process; the buffered audio is dropped.
+    void Promise.resolve()
+      .then(() => recorder.stop())
+      .catch(() => undefined);
+    rejectPending?.(new Error(RECORDING_CANCELLED));
+    this.writeOutcome(session, 'cancelled');
+  }
+
+  /** The recorder process ended on its own while a caller was still waiting. */
+  private failHeadlessRecording(recorder: AudioRecorder, err: Error): void {
+    if (this.pendingHeadless?.recorder !== recorder || this.headlessFinishing) return;
+    const rejectPending = this.pendingHeadlessReject;
+    const { session } = this.pendingHeadless;
+    this.abortHeadlessRecording(err);
+    rejectPending?.(err);
+    session.writeError(err);
+    this.writeOutcome(session, 'recorder-exited');
+  }
+
+  /** Leaves a metadata-only note in a session that ended before any processing. */
+  private writeOutcome(session: Session, outcome: string): void {
+    try {
+      session.writeTimings({ outcome });
+    } catch (err) {
+      console.warn('[pipeline] could not write session timings:', err);
+    }
+  }
+
+  private async finishHeadlessRecord(opts: { atLimit?: boolean } = {}): Promise<ProcessPcmResult> {
     const pending = this.pendingHeadless;
-    if (!pending) {
+    if (!pending || this.headlessFinishing) {
       throw new Error('no active recording');
     }
+    this.headlessFinishing = true;
     const { recorder, session, processOpts } = pending;
 
     try {
@@ -979,8 +1058,10 @@ export class Pipeline {
         this.recordStopTimer = null;
       }
       this.state = 'processing';
-      const result = await this.processPcm(buffer, processOpts, session);
+      const processed = await this.processPcm(buffer, processOpts, session);
+      const result = opts.atLimit ? { ...processed, stoppedAtLimit: true } : processed;
       this.state = 'idle';
+      this.headlessFinishing = false;
       this.scheduleIdle();
       this.pendingHeadlessResolve?.(result);
       this.pendingHeadlessResolve = null;

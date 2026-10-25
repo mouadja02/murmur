@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -94,4 +94,23 @@ describe('loadConfig — Windows stale whisper path migration', { skip: !IS_WIND
       assert.equal(loaded.resolved.whisperCliPath, missing);
     });
   });
+});
+
+describe('loadConfig — informational flags', () => {
+  for (const flag of ['--help', '--print-config']) {
+    it(`${flag} resolves the first-run values without creating config.json`, () => {
+      inEmptyCwd(({ userData }) => {
+        const seeded = loadConfig({ userDataDir: userData, argv: ['node', 'test'] });
+        rmSync(path.join(userData, 'config.json'));
+
+        const loaded = loadConfig({ userDataDir: userData, argv: ['node', 'test', flag] });
+
+        assert.equal(loaded.configFileWritten, false);
+        assert.equal(loaded.configFileExisted, false);
+        assert.equal(existsSync(path.join(userData, 'config.json')), false);
+        assert.equal(loaded.resolved.whisperCliPath, seeded.resolved.whisperCliPath);
+        assert.equal(loaded.resolved.logsDir, seeded.resolved.logsDir);
+      });
+    });
+  }
 });

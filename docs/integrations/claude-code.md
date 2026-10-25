@@ -71,7 +71,8 @@ Restart Claude Code after changing MCP configuration. Confirm the server appears
 
 - **Prefer `duration_ms`** on `murmur_record` for a single tool call (e.g. `duration_ms: 5000` for ~5 seconds).
 - Without `duration_ms`, call `murmur_stop_record` when you are done speaking.
-- `inject` defaults to `false` and should stay `false` in `murmur serve`; paste injection is only available through the Electron overlay.
+- A recording lasts only as long as its caller: if the tool call is cancelled or times out, or the client disconnects, the microphone stops and the audio is discarded. A recording is also cut off after 5 minutes (the result then has `stoppedAtLimit: true`).
+- `inject` defaults to `false`. `murmur serve` rejects `inject: true` up front (before the microphone starts); paste injection is only available through the Electron overlay.
 - Optional `skill_ids` overrides which skills apply for that call.
 
 Example prompt for Claude Code: *"Use murmur_record with duration_ms 8000 and return the refined prompt."*
@@ -84,7 +85,7 @@ Example prompt for Claude Code: *"Use murmur_record with duration_ms 8000 and re
 | `headless recorder command not found: sox` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `--recorder-command` |
 | Whisper / model errors | Run `murmur setup:whisper` or fix paths in the control panel |
 | LLM errors | Start Ollama (`ollama serve`) or your configured provider |
-| `pipeline is busy` | Wait for the current recording/processing to finish |
+| `pipeline is busy` | Wait for the current recording/processing to finish. If an agent left a recording open, call `murmur_stop_record` |
 
 ## See also
 
