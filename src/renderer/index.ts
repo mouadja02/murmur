@@ -319,6 +319,7 @@ window.murmur.onError((payload) => {
   lastErrorSessionDir = payload.sessionDir;
   errorMsgEl.textContent = payload.message;
   // A notice (e.g. "copied instead of typed") has nothing to retry or insert.
+  errorToast.classList.toggle('notice', payload.notice === true);
   retryBtn.hidden = payload.notice === true;
   insertRawBtn.hidden = payload.notice === true || payload.canInsertRaw !== true;
   errorToast.classList.add('visible');
