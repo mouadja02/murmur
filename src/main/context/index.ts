@@ -3,7 +3,7 @@ import type { ImageAttachment } from '../providers/types.js';
 // Type-only imports keep this module free of Electron / native deps, so the
 // pipeline (also used by headless `murmur serve`) can import it under plain node.
 import type { ClipboardEntry } from './clipboard.js';
-import { composeContextBlock } from './compose.js';
+import { type ContextBlock, composeContextBlock } from './compose.js';
 import type { ScreenshotContext } from './screenshot.js';
 import type { WindowContext } from './window.js';
 
@@ -13,6 +13,11 @@ export interface CapturedContext {
   /** Text block appended to the system prompt ('' when nothing is shared). */
   block: string;
   images: ImageAttachment[];
+  /**
+   * The parts behind `block` and `images`, kept apart so a re-run can be
+   * filtered by the settings in force when it is sent (see `contextForRerun`).
+   */
+  shared: ContextBlock;
 }
 
 export interface ContextSettings {
@@ -53,15 +58,46 @@ export async function captureContext(
   ]);
   const clipboard =
     s.clipboardContextEntries > 0 ? sources.clipboard(s.clipboardContextEntries) : [];
-  const block = composeContextBlock({
-    window: s.contextCapture ? window : null,
-    clipboard,
-    screenshot,
-  });
   return {
     window,
-    block,
+    ...sharedParts({ window: s.contextCapture ? window : null, clipboard, screenshot }),
+  };
+}
+
+function sharedParts(shared: ContextBlock): Pick<CapturedContext, 'block' | 'images' | 'shared'> {
+  const { screenshot } = shared;
+  return {
+    block: composeContextBlock(shared),
     images: screenshot ? [{ base64: screenshot.base64, mimeType: screenshot.mimeType }] : [],
+    shared,
+  };
+}
+
+/**
+ * Context for re-running a dictation (Refine last, Retry) from a snapshot taken
+ * earlier. The snapshot is data gated by the settings at send time: a part the
+ * user has since switched off is dropped, and so is everything when the
+ * refinement now goes to a different provider endpoint than the one the
+ * context was captured for. The window is kept only for `appSkillRoutes`
+ * matching, which never leaves the machine.
+ */
+export function contextForRerun(
+  ctx: CapturedContext | null,
+  s: ContextSettings,
+  sameDestination: boolean,
+): CapturedContext | null {
+  if (!ctx) return null;
+  const { shared } = ctx;
+  const allowed: ContextBlock = sameDestination
+    ? {
+        window: s.contextCapture ? shared.window : null,
+        clipboard: shared.clipboard.slice(0, Math.max(0, s.clipboardContextEntries)),
+        screenshot: s.screenshotContext ? shared.screenshot : null,
+      }
+    : { window: null, clipboard: [], screenshot: null };
+  return {
+    window: s.appSkillRoutes.length > 0 ? ctx.window : null,
+    ...sharedParts(allowed),
   };
 }
 
