@@ -16,10 +16,12 @@ import { hasLoopbackHost, isLoopbackHostname } from '../http-guard.js';
 import { PROVIDER_PRESETS } from '../providers/index.js';
 import {
   composeSystemPrompt,
+  createSkill,
   deleteSkill,
   isValidSkillId,
-  loadSkills,
+  loadSkillsReport,
   type Skill,
+  SkillConflictError,
   saveSkill,
 } from '../skills.js';
 
@@ -82,6 +84,17 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 
 function sendError(res: ServerResponse, status: number, message: string): void {
   sendJson(res, status, { error: message });
+}
+
+/** Answers 409 for a skill that would have replaced an existing file; false for any other error. */
+function sendSkillConflict(res: ServerResponse, err: unknown): boolean {
+  if (!(err instanceof SkillConflictError)) return false;
+  sendJson(res, 409, {
+    error: err.message,
+    requestedId: err.requestedId,
+    existingId: err.existingId,
+  });
+  return true;
 }
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
@@ -178,7 +191,7 @@ function skillJson(s: Skill): Record<string, unknown> {
 
 function stateSnapshot(deps: ServerDeps, csrfToken: string): Record<string, unknown> {
   const cfg = deps.getCurrentConfig();
-  const skills = loadSkills(cfg.skillsDir);
+  const { skills, shadowed } = loadSkillsReport(cfg.skillsDir);
   const composed = composeSystemPrompt(cfg.systemPrompt, skills, cfg.enabledSkills);
   return {
     config: publicConfig(cfg),
@@ -186,6 +199,11 @@ function stateSnapshot(deps: ServerDeps, csrfToken: string): Record<string, unkn
     shadowedEnv: deps.getCurrentShadowedEnv?.() ?? {},
     configError: getConfigFileError(cfg.configFilePath),
     skills: skills.map(skillJson),
+    skillConflicts: shadowed.map((c) => ({
+      id: c.id,
+      file: path.basename(c.filePath),
+      keptFile: path.basename(c.keptFilePath),
+    })),
     composedSystemPrompt: composed,
     providers: Object.entries(PROVIDER_PRESETS).map(([id, preset]) => ({
       id,
@@ -316,13 +334,17 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     const cfg = deps.getCurrentConfig();
-    saveSkill(cfg.skillsDir, {
-      id: b.id,
-      name: b.name,
-      description: b.description ?? '',
-      content: b.content,
-    });
-    sendJson(res, 200, stateSnapshot(deps, csrfToken));
+    try {
+      const created = createSkill(cfg.skillsDir, {
+        id: b.id,
+        name: b.name,
+        description: b.description ?? '',
+        content: b.content,
+      });
+      sendJson(res, 200, { ...stateSnapshot(deps, csrfToken), createdId: created.id });
+    } catch (err) {
+      if (!sendSkillConflict(res, err)) throw err;
+    }
     return true;
   }
 
@@ -340,13 +362,17 @@ async function handleApi(ctx: RouteContext): Promise<boolean> {
           sendError(res, 400, 'name and content are required');
           return true;
         }
-        saveSkill(cfg.skillsDir, {
-          id: p.id,
-          name: b.name,
-          description: b.description ?? '',
-          content: b.content,
-        });
-        sendJson(res, 200, stateSnapshot(deps, csrfToken));
+        try {
+          saveSkill(cfg.skillsDir, {
+            id: p.id,
+            name: b.name,
+            description: b.description ?? '',
+            content: b.content,
+          });
+          sendJson(res, 200, stateSnapshot(deps, csrfToken));
+        } catch (err) {
+          if (!sendSkillConflict(res, err)) throw err;
+        }
         return true;
       }
       if (method === 'DELETE') {

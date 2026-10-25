@@ -111,6 +111,9 @@ async function api(method, path, body) {
   if (!res.ok) {
     const err = new Error(json.error || `HTTP ${res.status}`);
     err.rejected = json.rejected;
+    err.status = res.status;
+    err.existingId = json.existingId;
+    err.requestedId = json.requestedId;
     throw err;
   }
   return json;
@@ -329,6 +332,20 @@ function updatePromptCharCount() {
   el.textContent = `${$('#system-prompt').value.length} chars`;
 }
 
+/** Two skill files with one id: only one is used, so say which ones are ignored. */
+function renderSkillConflicts() {
+  const note = $('#skill-conflicts');
+  const conflicts = state.skillConflicts ?? [];
+  note.classList.toggle('hidden', conflicts.length === 0);
+  note.textContent = conflicts
+    .map(
+      (c) =>
+        `${c.file} is ignored: ${c.keptFile} already provides the skill “${c.id}”. ` +
+        'Rename the id in one of the files, or delete the one you do not want.',
+    )
+    .join('\n');
+}
+
 function renderSkillList() {
   const list = $('#skill-list');
   list.innerHTML = '';
@@ -337,6 +354,7 @@ function renderSkillList() {
   count.textContent = `${state.skills.length} total · ${
     state.skills.filter((s) => enabled.has(s.id)).length
   } active`;
+  renderSkillConflicts();
   if (state.skills.length === 0) {
     const li = document.createElement('li');
     li.className = 'skill-item';
@@ -419,6 +437,7 @@ async function refresh() {
     state.shadowedEnv = snap.shadowedEnv ?? {};
     state.configError = snap.configError ?? null;
     state.skills = snap.skills;
+    state.skillConflicts = snap.skillConflicts ?? [];
     state.composedSystemPrompt = snap.composedSystemPrompt;
     state.providers = snap.providers;
     state.csrfToken = snap.security?.csrfToken ?? state.csrfToken;
@@ -546,11 +565,29 @@ function wireSkills() {
     const isNew = state.selectedSkillId === '__new__';
     try {
       if (isNew) {
-        const snap = await api('POST', '/api/skills', payload);
+        let snap;
+        let savedId;
+        try {
+          snap = await api('POST', '/api/skills', payload);
+          // Use the id the server assigned (may differ from the client-guessed slug).
+          savedId = snap.createdId;
+        } catch (err) {
+          // Creating never overwrites. Replacing is only offered for the skill that owns this id.
+          const owner = err.status === 409 && err.existingId && err.existingId === err.requestedId;
+          if (!owner) throw err;
+          const replace = confirm(
+            `A skill with the ID “${err.existingId}” already exists.\n\n` +
+              'OK replaces it with this one. Cancel keeps it so you can change the name or ID.',
+          );
+          if (!replace) {
+            toast(err.message, 'error');
+            return;
+          }
+          snap = await api('PUT', `/api/skills/${encodeURIComponent(err.existingId)}`, payload);
+          savedId = err.existingId;
+        }
         applySnapshot(snap);
-        // Use the id the server assigned (may differ from the client-guessed slug).
-        const created = snap.skills.find((s) => s.name === payload.name);
-        state.selectedSkillId = created?.id ?? slugify(payload.name);
+        state.selectedSkillId = savedId;
       } else {
         const id = state.selectedSkillId;
         const snap = await api('PUT', `/api/skills/${encodeURIComponent(id)}`, payload);
@@ -606,6 +643,7 @@ function applySnapshot(snap) {
   state.shadowedEnv = snap.shadowedEnv ?? state.shadowedEnv ?? {};
   state.configError = snap.configError ?? null;
   state.skills = snap.skills;
+  state.skillConflicts = snap.skillConflicts ?? [];
   state.composedSystemPrompt = snap.composedSystemPrompt;
   state.providers = snap.providers ?? state.providers;
   state.csrfToken = snap.security?.csrfToken ?? state.csrfToken;
@@ -613,14 +651,6 @@ function applySnapshot(snap) {
   applyOverridesToDom();
   applyShadowedEnvToDom();
   applyConfigErrorToDom();
-}
-
-function slugify(s) {
-  return String(s)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
 }
 
 function readConfigForm(extra = {}) {
