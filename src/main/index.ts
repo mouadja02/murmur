@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { app, type BrowserWindow, ipcMain, Menu, screen, shell } from 'electron';
+import { app, type BrowserWindow, clipboard, ipcMain, Menu, screen, shell } from 'electron';
 import {
   type InfoPayload,
   IPC_AUDIO_CHUNK,
@@ -420,6 +420,9 @@ function createMainPipeline(): Pipeline {
       tray.setState(iconState);
     },
     inject: injectText,
+    copyToClipboard: async (text) => {
+      await clipboard.writeText(text);
+    },
     createRecorder: () => new CommandAudioRecorder({ commandLine: cfg.recorderCommand }),
     createProgressiveInjector: createTypedProgressiveInjector,
     whisperSupportsStreaming: whisperStreaming,

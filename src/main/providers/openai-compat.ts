@@ -3,9 +3,10 @@ import type {
   ProviderConfig,
   RefineRequest,
   RefineResponse,
+  StopReason,
   StreamRefineOptions,
 } from './types.js';
-import { createThinkFilter, parseSseStream, stripThink } from './types.js';
+import { createThinkFilter, normalizeStopReason, parseSseStream, stripThink } from './types.js';
 
 interface OpenAiModelsResponse {
   data: { id: string }[];
@@ -14,7 +15,7 @@ interface OpenAiModelsResponse {
 interface OpenAiChatChoice {
   index: number;
   message: { role: string; content: string };
-  finish_reason?: string;
+  finish_reason?: string | null;
 }
 
 interface OpenAiChatResponse {
@@ -89,8 +90,13 @@ export class OpenAiCompatProvider implements LlmProvider {
     }
 
     const data = (await res.json()) as OpenAiChatResponse;
-    const raw = data.choices[0]?.message?.content ?? '';
-    return { text: stripThink(raw), durationMs: Date.now() - started };
+    const choice = data.choices[0];
+    const raw = choice?.message?.content ?? '';
+    return {
+      text: stripThink(raw),
+      durationMs: Date.now() - started,
+      stopReason: normalizeStopReason(choice?.finish_reason),
+    };
   }
 
   async refineStream(
@@ -123,10 +129,15 @@ export class OpenAiCompatProvider implements LlmProvider {
     }
 
     let fullText = '';
+    let finishReason: StopReason = 'unknown';
+    let sawDone = false;
     const visible = createThinkFilter(onToken);
 
     await parseSseStream(res.body, (_eventType, data) => {
-      if (data === '[DONE]') return;
+      if (data === '[DONE]') {
+        sawDone = true;
+        return;
+      }
       let parsed: OpenAiStreamDelta;
       try {
         parsed = JSON.parse(data) as OpenAiStreamDelta;
@@ -138,15 +149,24 @@ export class OpenAiCompatProvider implements LlmProvider {
           `${this.config.displayName} stream error: ${parsed.error.message ?? JSON.stringify(parsed.error)}`,
         );
       }
-      const content = parsed.choices?.[0]?.delta?.content;
+      const choice = parsed.choices?.[0];
+      if (choice?.finish_reason) finishReason = normalizeStopReason(choice.finish_reason);
+      const content = choice?.delta?.content;
       if (content) {
         fullText += content;
         visible.push(content);
       }
     });
+    // An explicit finish_reason is authoritative; some servers close the stream
+    // without a trailing [DONE]. Only a stream with neither was cut off.
+    if (!sawDone && finishReason === 'unknown') finishReason = 'aborted';
     visible.flush();
 
-    return { text: stripThink(fullText), durationMs: Date.now() - started };
+    return {
+      text: stripThink(fullText),
+      durationMs: Date.now() - started,
+      stopReason: finishReason,
+    };
   }
 
   async prewarm(): Promise<number> {

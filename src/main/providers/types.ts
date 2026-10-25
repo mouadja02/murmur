@@ -23,9 +23,33 @@ export interface RefineRequest {
   images?: ImageAttachment[];
 }
 
+export type StopReason = 'end' | 'length' | 'aborted' | 'unknown';
+
 export interface RefineResponse {
   text: string;
   durationMs: number;
+  /** Normalized provider completion reason used by the pipeline safety gate. */
+  stopReason: StopReason;
+}
+
+export function normalizeStopReason(reason: string | null | undefined): StopReason {
+  switch (reason) {
+    case 'stop':
+    case 'end_turn':
+    case 'stop_sequence':
+    case 'done':
+    case 'eos':
+      return 'end';
+    case 'length':
+    case 'max_tokens':
+      return 'length';
+    case 'abort':
+    case 'aborted':
+    case 'cancelled':
+      return 'aborted';
+    default:
+      return 'unknown';
+  }
 }
 
 export interface StreamRefineOptions {

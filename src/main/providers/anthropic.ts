@@ -3,9 +3,10 @@ import type {
   ProviderConfig,
   RefineRequest,
   RefineResponse,
+  StopReason,
   StreamRefineOptions,
 } from './types.js';
-import { createThinkFilter, parseSseStream, stripThink } from './types.js';
+import { createThinkFilter, normalizeStopReason, parseSseStream, stripThink } from './types.js';
 
 interface AnthropicContentBlock {
   type: 'text' | string;
@@ -15,7 +16,7 @@ interface AnthropicContentBlock {
 interface AnthropicMessagesResponse {
   id?: string;
   content: AnthropicContentBlock[];
-  stop_reason?: string;
+  stop_reason?: string | null;
 }
 
 interface AnthropicModelItem {
@@ -29,7 +30,7 @@ interface AnthropicModelsResponse {
 
 interface AnthropicStreamEvent {
   type: string;
-  delta?: { type: string; text?: string };
+  delta?: { type?: string; text?: string; stop_reason?: string | null };
   index?: number;
   error?: { type?: string; message?: string };
 }
@@ -49,6 +50,12 @@ interface AnthropicStreamEvent {
  */
 export class AnthropicProvider implements LlmProvider {
   constructor(public readonly config: ProviderConfig) {}
+
+  private maxOutputTokens(userPrompt: string): number {
+    // Keep enough room for long dictations while respecting a predictable
+    // upper bound for providers with smaller context windows.
+    return Math.min(8192, Math.max(2048, Math.ceil(userPrompt.length / 2)));
+  }
 
   private headers(): Record<string, string> {
     return {
@@ -76,7 +83,7 @@ export class AnthropicProvider implements LlmProvider {
 
     const body = {
       model: this.config.model,
-      max_tokens: 1024,
+      max_tokens: this.maxOutputTokens(req.userPrompt),
       temperature: this.config.temperature,
       system: req.systemPrompt,
       messages: this.messages(req),
@@ -96,7 +103,11 @@ export class AnthropicProvider implements LlmProvider {
 
     const data = (await res.json()) as AnthropicMessagesResponse;
     const raw = data.content.find((b) => b.type === 'text')?.text ?? '';
-    return { text: stripThink(raw), durationMs: Date.now() - started };
+    return {
+      text: stripThink(raw),
+      durationMs: Date.now() - started,
+      stopReason: normalizeStopReason(data.stop_reason),
+    };
   }
 
   async refineStream(
@@ -107,7 +118,7 @@ export class AnthropicProvider implements LlmProvider {
 
     const body = {
       model: this.config.model,
-      max_tokens: 1024,
+      max_tokens: this.maxOutputTokens(req.userPrompt),
       temperature: this.config.temperature,
       system: req.systemPrompt,
       stream: true,
@@ -131,6 +142,8 @@ export class AnthropicProvider implements LlmProvider {
     }
 
     let fullText = '';
+    let stopReason: StopReason = 'unknown';
+    let sawMessageStop = false;
     const visible = createThinkFilter(onToken);
 
     await parseSseStream(res.body, (_eventType, data) => {
@@ -147,14 +160,25 @@ export class AnthropicProvider implements LlmProvider {
           `Anthropic stream error: ${event.error?.type ?? 'error'}: ${event.error?.message ?? ''}`,
         );
       }
+      if (event.type === 'message_delta' && event.delta?.stop_reason) {
+        stopReason = normalizeStopReason(event.delta.stop_reason);
+      }
+      if (event.type === 'message_stop') {
+        sawMessageStop = true;
+      }
       if (event.type === 'content_block_delta' && event.delta?.text) {
         fullText += event.delta.text;
         visible.push(event.delta.text);
       }
     });
+    if (!sawMessageStop) stopReason = 'aborted';
     visible.flush();
 
-    return { text: stripThink(fullText), durationMs: Date.now() - started };
+    return {
+      text: stripThink(fullText),
+      durationMs: Date.now() - started,
+      stopReason,
+    };
   }
 
   async prewarm(): Promise<number> {

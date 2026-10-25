@@ -69,6 +69,10 @@ export interface InfoPayload {
 export interface ErrorPayload {
   message: string;
   sessionDir: string;
+  partialText?: string;
+  transcription?: string;
+  stopReason?: 'length' | 'aborted';
+  copiedToClipboard?: boolean;
 }
 
 /** Sent right before IPC_START_RECORDING to say how this capture should end. */

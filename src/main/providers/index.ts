@@ -9,6 +9,7 @@ export type {
   ProviderId,
   RefineRequest,
   RefineResponse,
+  StopReason,
   StreamRefineOptions,
 } from './types.js';
 

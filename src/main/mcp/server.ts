@@ -10,6 +10,7 @@ import { updateConfigFile as defaultUpdateConfigFile } from '../config/file.js';
 import type { ResolvedConfig } from '../config/index.js';
 import { hasLoopbackHost, hasLoopbackOriginOrNone } from '../http-guard.js';
 import type { Pipeline, ProcessPcmResult } from '../pipeline.js';
+import { IncompleteRefinementError } from '../pipeline.js';
 import { isValidSkillId, loadSkills } from '../skills.js';
 
 const PIPELINE_BUSY_MESSAGE = 'pipeline is busy (recording or processing)';
@@ -77,6 +78,21 @@ function textResult(output: Record<string, unknown> & { text: string }): ToolRes
 
 function toolError(err: unknown): ToolResult {
   const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof IncompleteRefinementError) {
+    const structuredContent: Record<string, unknown> = {
+      text: err.partialText,
+      transcription: err.transcription,
+      stopReason: err.stopReason,
+      partial: true,
+      copiedToClipboard: err.copiedToClipboard,
+    };
+    if (err.sessionDir) structuredContent.sessionDir = err.sessionDir;
+    return {
+      content: [{ type: 'text', text: message }],
+      structuredContent,
+      isError: true,
+    };
+  }
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
@@ -149,7 +165,15 @@ function registerMurmurTools(
         skillIds: args.skill_ids,
         inject: args.inject ?? false,
       });
-      return textResult({ text: recordText(result) });
+      // A length-limited or aborted refinement never gets here: the pipeline
+      // throws IncompleteRefinementError, which toolError() turns into a
+      // structured partial result.
+      return textResult({
+        text: recordText(result),
+        transcription: result.transcription,
+        sessionDir: result.sessionDir,
+        stopReason: result.stopReason ?? 'end',
+      });
     } catch (err) {
       return toolError(err);
     } finally {
