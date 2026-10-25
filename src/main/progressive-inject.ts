@@ -18,6 +18,63 @@ export interface ProgressiveInjector {
   abort(): Promise<ProgressiveInjectResult>;
 }
 
+export interface GuardedProgressiveInjector extends ProgressiveInjector {
+  /** The check refused typing: nothing was typed, and nothing will be. */
+  blocked(): boolean;
+}
+
+/**
+ * Holds back typing until `allow` approves the target, checked once when the
+ * first token arrives. Tokens that stream in meanwhile are buffered, then
+ * released in order, or dropped if the check refuses. A check that throws means
+ * the target could not be determined, which is treated as approval.
+ */
+export function guardProgressiveInjector(
+  inner: ProgressiveInjector,
+  allow: () => Promise<boolean>,
+): GuardedProgressiveInjector {
+  let gate: Promise<void> | null = null;
+  let open = false;
+  let isBlocked = false;
+  let aborted = false;
+  let held: string[] = [];
+
+  function pushToken(token: string): void {
+    if (isBlocked || aborted) return;
+    if (open) {
+      inner.pushToken(token);
+      return;
+    }
+    held.push(token);
+    if (gate) return;
+    gate = allow()
+      .catch(() => true)
+      .then((ok) => {
+        const queued = held;
+        held = [];
+        if (!ok) {
+          isBlocked = true;
+          return;
+        }
+        open = true;
+        if (!aborted) for (const t of queued) inner.pushToken(t);
+      });
+  }
+
+  async function flush(): Promise<ProgressiveInjectResult> {
+    await gate;
+    return inner.flush();
+  }
+
+  async function abort(): Promise<ProgressiveInjectResult> {
+    aborted = true;
+    await gate;
+    return inner.abort();
+  }
+
+  return { pushToken, flush, abort, blocked: () => isBlocked };
+}
+
 export function createProgressiveInjector(deps: ProgressiveInjectorDeps): ProgressiveInjector {
   let chain: Promise<void> = Promise.resolve();
   let aborted = false;

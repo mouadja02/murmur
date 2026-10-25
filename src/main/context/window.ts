@@ -39,6 +39,25 @@ function extractProcessName(title: string): string {
   return 'unknown';
 }
 
+/**
+ * Opaque identity of the window in front, for comparing "same window as when
+ * the capture started" and nothing else. It is the native handle, not the
+ * title: editors rewrite titles as you type (an unsaved marker, a new file).
+ * Null when the platform cannot say (e.g. some Wayland sessions).
+ */
+export async function getForegroundWindowId(
+  getWindow: () => Promise<unknown> = getActiveWindow,
+): Promise<string | null> {
+  try {
+    // nut-js keeps the handle on the instance but types it private.
+    const handle = ((await getWindow()) as { windowHandle?: unknown } | null)?.windowHandle;
+    if (typeof handle === 'number' || typeof handle === 'bigint') return String(handle);
+    return typeof handle === 'string' && handle !== '' ? handle : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function captureActiveWindow(): Promise<WindowContext | null> {
   try {
     const window = await getActiveWindow();

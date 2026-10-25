@@ -8,6 +8,13 @@ export type OverlayAnchor = 'bottom-center' | 'bottom-right' | 'top-right' | 'fr
 export type InjectionMethod = 'clipboard' | 'type' | 'auto';
 export type ClipboardRetention = 'keep-generated' | 'restore-previous';
 export type LogMode = 'metadata-only' | 'full';
+/** Push-to-talk: hold the combo while speaking, or press once to start and again to stop. */
+export type HotkeyMode = 'hold' | 'toggle';
+/**
+ * What to do when the foreground window changed between the start of a capture
+ * and the insertion: `copy` the prompt and tell the user, or `paste` anyway.
+ */
+export type FocusChangePolicy = 'copy' | 'paste';
 
 export interface OverlayPosition {
   x: number;
@@ -38,6 +45,7 @@ export interface ResolvedConfig {
 
   // Push-to-talk combo (parsed by HotkeyService).
   hotkeyCombo: string;
+  hotkeyMode: HotkeyMode;
   // Tap-to-toggle visibility combo (parsed by HotkeyService).
   toggleHotkeyCombo: string;
 
@@ -45,6 +53,7 @@ export interface ResolvedConfig {
   clipboardRestoreDelayMs: number;
   clipboardRetention: ClipboardRetention;
   injectionMethod: InjectionMethod;
+  focusChangePolicy: FocusChangePolicy;
   progressiveInjection: boolean;
   queueMaxDepth: number;
   prewarm: boolean;
@@ -108,10 +117,12 @@ export interface PartialConfig {
   whisperModelPath?: string;
 
   hotkeyCombo?: string;
+  hotkeyMode?: HotkeyMode;
   toggleHotkeyCombo?: string;
   clipboardRestoreDelayMs?: number;
   clipboardRetention?: ClipboardRetention;
   injectionMethod?: InjectionMethod;
+  focusChangePolicy?: FocusChangePolicy;
   progressiveInjection?: boolean;
   queueMaxDepth?: number;
   prewarm?: boolean;
@@ -150,6 +161,8 @@ const VALID_ANCHORS: OverlayAnchor[] = ['bottom-center', 'bottom-right', 'top-ri
 const VALID_INJECTION_METHODS: InjectionMethod[] = ['clipboard', 'type', 'auto'];
 const VALID_CLIPBOARD_RETENTION: ClipboardRetention[] = ['keep-generated', 'restore-previous'];
 const VALID_LOG_MODES: LogMode[] = ['metadata-only', 'full'];
+const VALID_HOTKEY_MODES: HotkeyMode[] = ['hold', 'toggle'];
+const VALID_FOCUS_CHANGE_POLICIES: FocusChangePolicy[] = ['copy', 'paste'];
 const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function isString(v: unknown): v is string {
@@ -208,6 +221,8 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
     );
   }
   if (isString(obj.hotkeyCombo)) out.hotkeyCombo = obj.hotkeyCombo;
+  const hotkeyMode = pick(obj.hotkeyMode, VALID_HOTKEY_MODES);
+  if (hotkeyMode) out.hotkeyMode = hotkeyMode;
   if (isString(obj.toggleHotkeyCombo)) out.toggleHotkeyCombo = obj.toggleHotkeyCombo;
   if (isNumber(obj.clipboardRestoreDelayMs)) {
     out.clipboardRestoreDelayMs = obj.clipboardRestoreDelayMs;
@@ -217,6 +232,9 @@ export function sanitizePartial(input: unknown, source: string): PartialConfig {
 
   const injectionMethod = pick(obj.injectionMethod, VALID_INJECTION_METHODS);
   if (injectionMethod) out.injectionMethod = injectionMethod;
+
+  const focusChangePolicy = pick(obj.focusChangePolicy, VALID_FOCUS_CHANGE_POLICIES);
+  if (focusChangePolicy) out.focusChangePolicy = focusChangePolicy;
 
   if (typeof obj.progressiveInjection === 'boolean') {
     out.progressiveInjection = obj.progressiveInjection;
@@ -314,10 +332,12 @@ const REJECTION_REASONS: Partial<Record<keyof PartialConfig, string>> = {
   whisperCliPath: 'must be text',
   whisperModelPath: 'must be text',
   hotkeyCombo: 'must be text',
+  hotkeyMode: `must be one of: ${oneOf(VALID_HOTKEY_MODES)}`,
   toggleHotkeyCombo: 'must be text',
   clipboardRestoreDelayMs: 'must be a number',
   clipboardRetention: `must be one of: ${oneOf(VALID_CLIPBOARD_RETENTION)}`,
   injectionMethod: `must be one of: ${oneOf(VALID_INJECTION_METHODS)}`,
+  focusChangePolicy: `must be one of: ${oneOf(VALID_FOCUS_CHANGE_POLICIES)}`,
   progressiveInjection: 'must be true or false',
   queueMaxDepth: 'must be a number, at least 1',
   prewarm: 'must be true or false',

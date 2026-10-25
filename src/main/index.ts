@@ -31,6 +31,7 @@ import {
   type LoadedConfig,
   loadConfig,
   printResolvedConfig,
+  type ResolvedConfig,
   updateConfigFile,
 } from './config/index.js';
 import {
@@ -41,9 +42,9 @@ import {
 } from './context/clipboard.js';
 import { type CapturedContext, captureContext, contextWanted } from './context/index.js';
 import { captureScreenshot } from './context/screenshot.js';
-import { captureActiveWindow } from './context/window.js';
+import { captureActiveWindow, getForegroundWindowId } from './context/window.js';
 import { type ServerHandle, startControlPanelServer } from './control-panel/server.js';
-import { HotkeyService } from './hotkey.js';
+import { type HotkeyConfig, HotkeyService } from './hotkey.js';
 import { createTypedProgressiveInjector, type InjectOptions, pasteAtCursor } from './inject.js';
 import { type McpServerHandle, startMcpServer } from './mcp/server.js';
 import {
@@ -162,6 +163,17 @@ async function captureContextNow(): Promise<CapturedContext | null> {
     clipboard: getClipboardHistory,
     screenshot: captureScreenshot,
   });
+}
+
+/**
+ * The window the user is working in, for the focus guard. While Murmur's own
+ * overlay holds focus (a click on the pill) the user's target is unknown, and
+ * reporting the overlay would make that dictation look like a focus change as
+ * soon as focus returns to the app.
+ */
+async function foregroundWindowForGuard(): Promise<string | null> {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) return null;
+  return getForegroundWindowId();
 }
 
 async function injectText(text: string, opts: InjectOptions): Promise<void> {
@@ -385,18 +397,23 @@ function wireIPC(): void {
   });
 }
 
+function hotkeyConfig(r: ResolvedConfig): HotkeyConfig {
+  return { ptt: r.hotkeyCombo, toggle: r.toggleHotkeyCombo, mode: r.hotkeyMode };
+}
+
 function wireHotkey(): void {
   if (!loaded) return;
-  const parsed = hotkey.configure({
-    ptt: loaded.resolved.hotkeyCombo,
-    toggle: loaded.resolved.toggleHotkeyCombo,
-  });
+  const parsed = hotkey.configure(hotkeyConfig(loaded.resolved));
   console.log(
     `[murmur] hotkeys: PTT=${parsed.ptt ? loaded.resolved.hotkeyCombo : '(invalid)'}` +
+      ` (${loaded.resolved.hotkeyMode})` +
       ` toggle=${parsed.toggle ? loaded.resolved.toggleHotkeyCombo : '(invalid)'}`,
   );
   hotkey.on('start', () => pipeline?.start());
   hotkey.on('stop', () => pipeline?.stop());
+  // Toggle mode: the same press starts, stops, or (while a dictation is being
+  // processed) queues a capture — like clicking the pill, minus VAD auto-stop.
+  hotkey.on('capture', () => pipeline?.toggle('hotkey-toggle'));
   hotkey.on('toggle', () => {
     if (!mainWindow) return;
     const visible = toggleOverlayVisibility(mainWindow);
@@ -408,10 +425,7 @@ function wireHotkey(): void {
 
 function rebindHotkeys(): void {
   if (!loaded) return;
-  hotkey.configure({
-    ptt: loaded.resolved.hotkeyCombo,
-    toggle: loaded.resolved.toggleHotkeyCombo,
-  });
+  hotkey.configure(hotkeyConfig(loaded.resolved));
 }
 
 function createMainPipeline(): Pipeline {
@@ -446,6 +460,7 @@ function createMainPipeline(): Pipeline {
     createProgressiveInjector: createTypedProgressiveInjector,
     whisperSupportsStreaming: whisperStreaming,
     captureContext: captureContextNow,
+    getForegroundWindow: foregroundWindowForGuard,
   });
 }
 

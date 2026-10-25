@@ -19,6 +19,8 @@ export { getConfigFileError, updateConfigFile } from './file.js';
 export type {
   AppSkillRoute,
   ClipboardRetention,
+  FocusChangePolicy,
+  HotkeyMode,
   InjectionMethod,
   LogMode,
   OverlayAnchor,
@@ -67,6 +69,12 @@ function readEnv(): PartialConfig {
   if (e.WHISPER_CLI_PATH) partial.whisperCliPath = e.WHISPER_CLI_PATH;
   if (e.WHISPER_MODEL_PATH) partial.whisperModelPath = e.WHISPER_MODEL_PATH;
   if (e.MURMUR_HOTKEY) partial.hotkeyCombo = e.MURMUR_HOTKEY;
+  if (e.MURMUR_HOTKEY_MODE === 'hold' || e.MURMUR_HOTKEY_MODE === 'toggle') {
+    partial.hotkeyMode = e.MURMUR_HOTKEY_MODE;
+  }
+  if (e.MURMUR_FOCUS_CHANGE_POLICY === 'copy' || e.MURMUR_FOCUS_CHANGE_POLICY === 'paste') {
+    partial.focusChangePolicy = e.MURMUR_FOCUS_CHANGE_POLICY;
+  }
   if (e.MURMUR_TOGGLE_HOTKEY) partial.toggleHotkeyCombo = e.MURMUR_TOGGLE_HOTKEY;
   if (e.MURMUR_CLIPBOARD_RESTORE_DELAY_MS) {
     const n = Number(e.MURMUR_CLIPBOARD_RESTORE_DELAY_MS);
@@ -394,6 +402,15 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       sources.file.toggleHotkeyCombo,
       sources.env.toggleHotkeyCombo,
     ) ?? DEFAULT_CONFIG.toggleHotkeyCombo;
+  const hotkeyMode =
+    pickFirst(sources.cli.hotkeyMode, sources.file.hotkeyMode, sources.env.hotkeyMode) ??
+    DEFAULT_CONFIG.hotkeyMode;
+  const focusChangePolicy =
+    pickFirst(
+      sources.cli.focusChangePolicy,
+      sources.file.focusChangePolicy,
+      sources.env.focusChangePolicy,
+    ) ?? DEFAULT_CONFIG.focusChangePolicy;
   const clipboardRestoreDelayMs =
     pickFirst(
       sources.cli.clipboardRestoreDelayMs,
@@ -506,10 +523,12 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       DEFAULT_CONFIG.whisperModelPath,
     ),
     hotkeyCombo,
+    hotkeyMode,
     toggleHotkeyCombo,
     clipboardRestoreDelayMs,
     clipboardRetention,
     injectionMethod,
+    focusChangePolicy,
     progressiveInjection:
       injectionMethod === 'clipboard' && progressiveInjection ? false : progressiveInjection,
     queueMaxDepth,
@@ -577,10 +596,12 @@ function computeValueSources(sources: MergeSources): ConfigValueSources {
     'whisperCliPath',
     'whisperModelPath',
     'hotkeyCombo',
+    'hotkeyMode',
     'toggleHotkeyCombo',
     'clipboardRestoreDelayMs',
     'clipboardRetention',
     'injectionMethod',
+    'focusChangePolicy',
     'progressiveInjection',
     'queueMaxDepth',
     'prewarm',
@@ -625,10 +646,12 @@ function computeOverrides(sources: MergeSources): ConfigOverrides {
     'whisperCliPath',
     'whisperModelPath',
     'hotkeyCombo',
+    'hotkeyMode',
     'toggleHotkeyCombo',
     'clipboardRestoreDelayMs',
     'clipboardRetention',
     'injectionMethod',
+    'focusChangePolicy',
     'progressiveInjection',
     'queueMaxDepth',
     'prewarm',
@@ -666,10 +689,12 @@ const ENV_VARS: Partial<Record<keyof PartialConfig, readonly string[]>> = {
   whisperCliPath: ['WHISPER_CLI_PATH'],
   whisperModelPath: ['WHISPER_MODEL_PATH'],
   hotkeyCombo: ['MURMUR_HOTKEY'],
+  hotkeyMode: ['MURMUR_HOTKEY_MODE'],
   toggleHotkeyCombo: ['MURMUR_TOGGLE_HOTKEY'],
   clipboardRestoreDelayMs: ['MURMUR_CLIPBOARD_RESTORE_DELAY_MS'],
   clipboardRetention: ['MURMUR_CLIPBOARD_RETENTION'],
   injectionMethod: ['MURMUR_INJECTION_METHOD'],
+  focusChangePolicy: ['MURMUR_FOCUS_CHANGE_POLICY'],
   progressiveInjection: ['MURMUR_PROGRESSIVE_INJECTION'],
   vadEnabled: ['MURMUR_VAD_ENABLED'],
   vadThresholdDb: ['MURMUR_VAD_THRESHOLD_DB'],

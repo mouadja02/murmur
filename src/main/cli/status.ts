@@ -77,7 +77,10 @@ export function renderStatus(input: StatusInput): string {
   lines.push(row('Temp', String(cfg.temperature)));
 
   lines.push(header('Hotkeys'));
-  lines.push(row('PTT', pc.bold(cfg.hotkeyCombo)) + pc.dim('  hold to record'));
+  lines.push(
+    row('PTT', pc.bold(cfg.hotkeyCombo)) +
+      pc.dim(cfg.hotkeyMode === 'toggle' ? '  press to start / stop' : '  hold to record'),
+  );
   lines.push(row('Toggle', pc.bold(cfg.toggleHotkeyCombo)) + pc.dim('  hide / show overlay'));
 
   lines.push(header('Paths'));

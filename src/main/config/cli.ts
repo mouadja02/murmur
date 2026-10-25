@@ -93,7 +93,11 @@ export function parseCli(argv: readonly string[]): CliResult {
   if (typeof raw['whisper-cli'] === 'string') candidate.whisperCliPath = raw['whisper-cli'];
   if (typeof raw['whisper-model'] === 'string') candidate.whisperModelPath = raw['whisper-model'];
   if (typeof raw.hotkey === 'string') candidate.hotkeyCombo = raw.hotkey;
+  if (typeof raw['hotkey-mode'] === 'string') candidate.hotkeyMode = raw['hotkey-mode'];
   if (typeof raw['toggle-hotkey'] === 'string') candidate.toggleHotkeyCombo = raw['toggle-hotkey'];
+  if (typeof raw['focus-change-policy'] === 'string') {
+    candidate.focusChangePolicy = raw['focus-change-policy'];
+  }
   if (typeof raw['clipboard-restore-delay'] === 'string') {
     const n = Number(raw['clipboard-restore-delay']);
     if (Number.isFinite(n)) candidate.clipboardRestoreDelayMs = n;
@@ -208,9 +212,13 @@ Local STT:
 
 Hotkeys (combo strings parsed from "Ctrl+Shift+Space" form):
   --hotkey <combo>                    Push-to-talk combo (default Ctrl+Shift+Space)
+  --hotkey-mode <hold|toggle>         Push-to-talk: hold the combo while speaking (default), or press
+                                      once to start and again to stop (no auto-stop on pauses)
   --toggle-hotkey <combo>             Show/hide overlay (default Ctrl+Shift+H)
   --injection-method <auto|clipboard|type>
                                       How generated prompts are inserted
+  --focus-change-policy <copy|paste>  If the foreground window changed since the capture started:
+                                      copy the prompt for a manual paste (default), or paste anyway
   --progressive-injection             Type tokens into the cursor as they stream (requires type/auto method)
   --clipboard-retention <keep-generated|restore-previous>
                                       Keep generated text on clipboard after paste, or restore old clipboard
