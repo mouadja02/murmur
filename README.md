@@ -249,6 +249,10 @@ No hedging, no apologies, no restating the question.
 
 You can author them in your editor (they're git-friendly) or in the control panel's **Skills** tab. Enabled skills are concatenated under an `## Active skills` header in the prompt sent to the LLM.
 
+A skill is identified by its frontmatter `id` (the filename is used only when the file has none), and the panel edits and deletes the file the skill was loaded from, so a hand-dropped `team-notes.md` with `id: team-vocab` behaves like any other skill. Creating a skill never overwrites an existing one: if the ID is taken the panel asks whether to replace it, and if a file name is taken by another skill you pick a different ID. If two files declare the same `id`, the one named `<id>.md` is used (otherwise the first by filename) and the panel lists the ignored file.
+
+The two example skills (`concise-output`, `code-context`) are added once to a new skills folder. Delete them and they stay deleted; remove the `.seeded-skills` marker file in that folder to get them back.
+
 ### Importing skills
 
 The **Skills** tab has an **↑ Import** button that opens an import panel with two tabs:

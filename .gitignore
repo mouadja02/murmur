@@ -16,3 +16,5 @@ roadmap/
 docs/superpowers/
 docs/FEATURE_BLUEPRINT.md
 docs/IMPLEMENTATION_PLANS.md
+# Per-folder record of which example skills were already offered (see src/main/skills.ts)
+skills/.seeded-skills
