@@ -1,6 +1,18 @@
 import { EventEmitter } from 'node:events';
-import { UiohookKey, type UiohookKeyboardEvent, uIOhook } from 'uiohook-napi';
+import { createRequire } from 'node:module';
+import type { UiohookKeyboardEvent } from 'uiohook-napi';
 import type { HotkeyMode } from './config/index.js';
+
+type KeyTable = Readonly<Record<string, number>>;
+
+/**
+ * Loads the native hook on first use. Importing it can throw on a machine
+ * without a display (a headless Linux CI runner), so this module must stay
+ * importable without it; tests pass their own hook and key table instead.
+ */
+function native(): typeof import('uiohook-napi') {
+  return createRequire(import.meta.url)('uiohook-napi');
+}
 
 interface ParsedCombo {
   ctrl: boolean;
@@ -11,7 +23,7 @@ interface ParsedCombo {
   raw: string;
 }
 
-const KEY_ALIASES: Record<string, keyof typeof UiohookKey> = {
+const KEY_ALIASES: Record<string, string> = {
   SPACE: 'Space',
   ESC: 'Escape',
   ESCAPE: 'Escape',
@@ -21,17 +33,17 @@ const KEY_ALIASES: Record<string, keyof typeof UiohookKey> = {
   BACKSPACE: 'Backspace',
 };
 
-function lookupKey(token: string): number | null {
+function lookupKey(token: string, keys: KeyTable): number | null {
   const upper = token.toUpperCase();
-  const aliased = KEY_ALIASES[upper] ?? (upper as keyof typeof UiohookKey);
-  const code = (UiohookKey as Record<string, number>)[aliased];
+  const aliased = KEY_ALIASES[upper] ?? upper;
+  const code = keys[aliased];
   if (typeof code === 'number') return code;
   // Last-resort: try the token as-is in case the user wrote `F1` etc.
-  const direct = (UiohookKey as Record<string, number>)[token];
+  const direct = keys[token];
   return typeof direct === 'number' ? direct : null;
 }
 
-export function parseCombo(combo: string): ParsedCombo | null {
+export function parseCombo(combo: string, keys?: KeyTable): ParsedCombo | null {
   const parts = combo
     .split('+')
     .map((p) => p.trim())
@@ -52,7 +64,7 @@ export function parseCombo(combo: string): ParsedCombo | null {
     else if (lower === 'meta' || lower === 'cmd' || lower === 'win' || lower === 'super') {
       meta = true;
     } else {
-      const code = lookupKey(p);
+      const code = lookupKey(p, keys ?? native().UiohookKey);
       if (code !== null) keyCode = code;
     }
   }
@@ -101,7 +113,13 @@ export class HotkeyService extends EventEmitter {
   private toggleHeld = false;
   private started = false;
 
-  constructor(private readonly hook: KeyHook = uIOhook) {
+  private activeHook: KeyHook | null = null;
+
+  /** Both default to the native hook, loaded on first use; tests pass fakes. */
+  constructor(
+    private readonly hook?: KeyHook,
+    private readonly keys?: KeyTable,
+  ) {
     super();
   }
 
@@ -116,8 +134,8 @@ export class HotkeyService extends EventEmitter {
   /** Updates the parsed combos. Safe to call before or after `start()`. */
   configure(cfg: HotkeyConfig): { ptt: ParsedCombo | null; toggle: ParsedCombo | null } {
     this.mode = cfg.mode ?? 'hold';
-    this.ptt = parseCombo(cfg.ptt);
-    this.toggle = parseCombo(cfg.toggle);
+    this.ptt = parseCombo(cfg.ptt, this.keys);
+    this.toggle = parseCombo(cfg.toggle, this.keys);
     if (!this.ptt) console.warn(`[hotkey] could not parse PTT combo "${cfg.ptt}"`);
     if (!this.toggle) console.warn(`[hotkey] could not parse toggle combo "${cfg.toggle}"`);
     return { ptt: this.ptt, toggle: this.toggle };
@@ -126,8 +144,10 @@ export class HotkeyService extends EventEmitter {
   start(): void {
     if (this.started) return;
     this.started = true;
+    const hook = this.hook ?? native().uIOhook;
+    this.activeHook = hook;
 
-    this.hook.on('keydown', (e) => {
+    hook.on('keydown', (e) => {
       if (this.ptt && e.keycode === this.ptt.keyCode && modsMatch(e, this.ptt)) {
         if (this.pttPress === null) {
           // `capture` flips the recording state: the same press starts or stops.
@@ -144,7 +164,7 @@ export class HotkeyService extends EventEmitter {
       }
     });
 
-    this.hook.on('keyup', (e) => {
+    hook.on('keyup', (e) => {
       // Stop on key-up of the PTT key regardless of modifier state — users
       // commonly release modifiers a few ms before the main key.
       if (this.ptt && e.keycode === this.ptt.keyCode && this.pttPress !== null) {
@@ -158,14 +178,14 @@ export class HotkeyService extends EventEmitter {
       }
     });
 
-    this.hook.start();
+    hook.start();
   }
 
   shutdown(): void {
     if (!this.started) return;
     this.started = false;
     try {
-      this.hook.stop();
+      this.activeHook?.stop();
     } catch {
       /* ignore */
     }

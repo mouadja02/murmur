@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { describe, it } from 'node:test';
-import { UiohookKey } from 'uiohook-napi';
 import { HotkeyService } from '../dist/main/hotkey.js';
+
+// uiohook-napi is never loaded here: on a headless Linux runner importing it throws
+// (no X display), and these tests must not install a real global hook anywhere.
+const UiohookKey = { K: 37, H: 35, Space: 57 };
 
 /** A stand-in for uIOhook: tests push key events through it. */
 function fakeHook() {
@@ -21,7 +24,7 @@ const KEY = UiohookKey.K;
 
 function setup(mode) {
   const hook = fakeHook();
-  const service = new HotkeyService(hook);
+  const service = new HotkeyService(hook, UiohookKey);
   service.configure({ ptt: 'Ctrl+Alt+K', toggle: 'Ctrl+Shift+H', mode });
   const events = [];
   for (const name of ['start', 'stop', 'capture', 'toggle']) {
