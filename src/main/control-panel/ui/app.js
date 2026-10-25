@@ -38,6 +38,11 @@ const FIELD_INFO = {
     env: 'WHISPER_MODEL_PATH',
   },
   hotkeyCombo: { inputId: 'cfg-hotkeyCombo', flag: '--hotkey', env: 'MURMUR_HOTKEY' },
+  hotkeyMode: {
+    inputId: 'cfg-hotkeyMode',
+    flag: '--hotkey-mode',
+    env: 'MURMUR_HOTKEY_MODE',
+  },
   toggleHotkeyCombo: {
     inputId: 'cfg-toggleHotkeyCombo',
     flag: '--toggle-hotkey',
@@ -57,6 +62,11 @@ const FIELD_INFO = {
     inputId: 'cfg-injectionMethod',
     flag: '--injection-method',
     env: 'MURMUR_INJECTION_METHOD',
+  },
+  focusChangePolicy: {
+    inputId: 'cfg-focusChangePolicy',
+    flag: '--focus-change-policy',
+    env: 'MURMUR_FOCUS_CHANGE_POLICY',
   },
   progressiveInjection: {
     inputId: 'cfg-progressiveInjection',
@@ -190,10 +200,12 @@ function applyStateToDom() {
 
   if (!dirtyForms.has('hotkeys')) {
     $('#cfg-hotkeyCombo').value = c.hotkeyCombo;
+    $('#cfg-hotkeyMode').value = c.hotkeyMode ?? 'hold';
     $('#cfg-toggleHotkeyCombo').value = c.toggleHotkeyCombo;
     $('#cfg-clipboardRestoreDelayMs').value = c.clipboardRestoreDelayMs;
     $('#cfg-clipboardRetention').value = c.clipboardRetention ?? 'keep-generated';
     $('#cfg-injectionMethod').value = c.injectionMethod ?? 'auto';
+    $('#cfg-focusChangePolicy').value = c.focusChangePolicy ?? 'copy';
     $('#cfg-progressiveInjection').checked = Boolean(c.progressiveInjection);
   }
 
@@ -662,10 +674,12 @@ function readConfigForm(extra = {}) {
     whisperCliPath: $('#cfg-whisperCliPath').value.trim(),
     whisperModelPath: $('#cfg-whisperModelPath').value.trim(),
     hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
+    hotkeyMode: $('#cfg-hotkeyMode').value,
     toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
     clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
     clipboardRetention: $('#cfg-clipboardRetention').value,
     injectionMethod: $('#cfg-injectionMethod').value,
+    focusChangePolicy: $('#cfg-focusChangePolicy').value,
     progressiveInjection: $('#cfg-progressiveInjection').checked,
     ...readVoiceForm(),
     logsDir: $('#cfg-logsDir').value.trim(),
@@ -827,10 +841,12 @@ function wireHotkeys() {
     '#hotkeys-form',
     () => ({
       hotkeyCombo: $('#cfg-hotkeyCombo').value.trim(),
+      hotkeyMode: $('#cfg-hotkeyMode').value,
       toggleHotkeyCombo: $('#cfg-toggleHotkeyCombo').value.trim(),
       clipboardRestoreDelayMs: Number($('#cfg-clipboardRestoreDelayMs').value),
       clipboardRetention: $('#cfg-clipboardRetention').value,
       injectionMethod: $('#cfg-injectionMethod').value,
+      focusChangePolicy: $('#cfg-focusChangePolicy').value,
       progressiveInjection: $('#cfg-progressiveInjection').checked,
     }),
     'hotkeys',

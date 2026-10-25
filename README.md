@@ -180,12 +180,14 @@ Four stages, strictly local:
 
 | Stage | What happens |
 | --- | --- |
-| **Capture** | The overlay records 16 kHz mono PCM while you hold the hotkey (or between two clicks). |
+| **Capture** | The overlay records 16 kHz mono PCM while you hold the hotkey (or, in toggle mode, between two presses of it), or between two clicks. |
 | **Transcribe** | `whisper.cpp` turns the WAV into text on your CPU. |
 | **Refine** | Your local LLM rewrites the transcription into a concise prompt using your active system prompt + enabled skills. |
 | **Inject** | Murmur copies the refined text, fires `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) at your current cursor, and keeps the generated prompt on your clipboard by default. |
 
 **When a step fails after your words were transcribed**, the error toast offers **Retry** and **Insert raw**, which inserts exactly what you said, with no provider call. If inserting fails too, the text goes to the clipboard instead. The right-click menu has the same **Insert raw transcription** item. A failed `murmur_record` MCP call returns the transcription in `structuredContent` as well.
+
+**If you switch windows while a dictation is being processed**, Murmur does not paste into the new one. It remembers which window was in front when the capture started, and if a different one is in front when the prompt is ready (or before the first character is typed, with progressive injection) it copies the prompt to the clipboard and tells you to paste it where you want it. Set `focusChangePolicy` to `paste` to keep the old behaviour of inserting into whatever is in front. Windows are compared by their native handle, never logged, and if the operating system cannot tell windows apart (some Wayland sessions) or the overlay itself had focus when you started, Murmur inserts as before. The check covers captures started from the overlay or hotkey and `murmur_record` with `inject: true`; **Retry**, **Refine last** and **Insert raw** are actions you take at that moment, so they insert into whatever is in front. Progressive injection checks once, before the first keystroke, and does not stop typing if you switch windows part-way through.
 
 **Progressive injection** (typing as tokens stream) stops at the first chunk it cannot type instead of skipping it, so a prompt never loses words from its middle. The dictation is then reported as an error, and the full prompt is copied to the clipboard. If part of a dictation is already in the target (typing stopped, or the stream failed mid-way), **Retry**, **Refine last** and **Insert raw** copy to the clipboard rather than typing over it. The toast says so; clear the partial text and paste.
 
@@ -195,7 +197,7 @@ Every session gets a timestamped folder under `logs/`. By default it stores timi
 
 ## Features at a glance
 
-- **One-click or push-to-talk** — click the pill, or hold `Ctrl+Shift+Space`.
+- **One-click or push-to-talk** — click the pill, or hold `Ctrl+Shift+Space`. Prefer not to hold keys? Set **Push-to-talk mode** to *Toggle* (`hotkeyMode`): press once to start, again to stop.
 - **Drag anywhere** — pill position is saved and survives restart.
 - **Toggle hotkey** — `Ctrl+Shift+H` hides / shows the overlay from any app.
 - **Right-click menu** — refine the last transcription, insert the raw transcription after a failure, open the control panel, reset position, quit.
@@ -220,7 +222,7 @@ Open it from the overlay (right-click → **Open control panel**), from the pre-
 | **Skills** | Add, edit, rename, delete skills. Import from a local `.md` file or any raw Markdown URL (GitHub raw, Gist, …). One click to enable/disable each. |
 | **Provider** | Switch provider, base URL, model, API key, temperature. One-click presets for local and online providers. **Test connection** button reports latency. Fields whose value comes from a CLI flag or env var are shown read-only with a lock badge — see [Config precedence](#config-precedence). |
 | **Whisper** | Point to a different `whisper-cli` binary (or `whisper-cli.exe` on Windows) or `.bin` model. |
-| **Hotkeys** | Bind push-to-talk and toggle combos, choose insertion mode, and decide whether the generated prompt stays on the clipboard after auto-paste. |
+| **Hotkeys** | Bind push-to-talk and toggle combos, choose hold or toggle push-to-talk, choose insertion mode, decide what happens if the active window changed before insertion, and whether the generated prompt stays on the clipboard after auto-paste. |
 | **Paths** | Logs dir, skills dir, and the resolved config file path. |
 | **Model guide** | Hardware-tiered model recommendations with one-click `ollama pull` copy commands. |
 
@@ -318,6 +320,7 @@ pnpm dev --provider openai-compat --base-url https://api.groq.com/openai/v1 --mo
 | --- | --- |
 | **Click** the pill | Toggles recording (start / stop) |
 | **Hold** `Ctrl+Shift+Space` | Push-to-talk: records while held, processes on release |
+| **Press** `Ctrl+Shift+Space` (`hotkeyMode: "toggle"`) | Starts recording; the next press stops it. A pause in your speech does not stop it, unlike click-to-record. Pressing while a dictation is still processing queues the next one, like clicking the pill |
 | **Tap** `Ctrl+Shift+H` | Show / hide the overlay from anywhere |
 | **Drag** the pill | Moves it; the new position survives restart |
 | **Right-click** the pill | Context menu: refine last · insert raw transcription · open control panel · hide · reset position · quit |
@@ -412,7 +415,9 @@ pnpm dev --provider openai-compat --base-url http://localhost:1234/v1 --model qw
 | `--whisper-cli <path>` | Path or `PATH`-resolvable name of `whisper-cli` (`whisper-cli.exe` on Windows) |
 | `--whisper-model <path>` | Path to a `ggml-*.bin` model file |
 | `--hotkey <combo>` | Push-to-talk combo (default `Ctrl+Shift+Space`) |
+| `--hotkey-mode <hold\|toggle>` | Push-to-talk by holding the combo (default), or press once to start and again to stop |
 | `--toggle-hotkey <combo>` | Show/hide combo (default `Ctrl+Shift+H`) |
+| `--focus-change-policy <copy\|paste>` | If the active window changed since the capture started: copy the prompt and notify (default), or paste anyway |
 | `--injection-method <auto\|clipboard\|type>` | Insert by paste, type directly, or paste with typing fallback |
 | `--clipboard-retention <keep-generated\|restore-previous>` | Keep the generated prompt on the clipboard after paste, or restore the previous clipboard |
 | `--logs-dir <path>` | Per-session logs directory |
@@ -459,10 +464,12 @@ Every field is optional. A fresh file contains only `whisperCliPath`, `whisperMo
   "whisperCliPath": "whisper-cli",
   "whisperModelPath": "./models/ggml-base.en.bin",
   "hotkeyCombo": "Ctrl+Shift+Space",
+  "hotkeyMode": "hold",
   "toggleHotkeyCombo": "Ctrl+Shift+H",
   "clipboardRestoreDelayMs": 150,
   "clipboardRetention": "keep-generated",
   "injectionMethod": "auto",
+  "focusChangePolicy": "copy",
   "overlay": {
     "anchor": "bottom-center",
     "offsetX": 0,
@@ -501,10 +508,12 @@ Environment variables have lower precedence than CLI flags and the config file (
 | `WHISPER_CLI_PATH` | `whisperCliPath` |
 | `WHISPER_MODEL_PATH` | `whisperModelPath` |
 | `MURMUR_HOTKEY` | `hotkeyCombo` |
+| `MURMUR_HOTKEY_MODE` | `hotkeyMode` (`hold` or `toggle`) |
 | `MURMUR_TOGGLE_HOTKEY` | `toggleHotkeyCombo` |
 | `MURMUR_CLIPBOARD_RESTORE_DELAY_MS` | `clipboardRestoreDelayMs` |
 | `MURMUR_CLIPBOARD_RETENTION` | `clipboardRetention` |
 | `MURMUR_INJECTION_METHOD` | `injectionMethod` |
+| `MURMUR_FOCUS_CHANGE_POLICY` | `focusChangePolicy` (`copy` or `paste`) |
 | `MURMUR_LOGS_DIR` | `logsDir` |
 | `MURMUR_LOG_MODE` | `logMode` |
 | `MURMUR_SKILLS_DIR` | `skillsDir` |

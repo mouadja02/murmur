@@ -45,10 +45,12 @@ export const DEFAULT_CONFIG: Required<Omit<PartialConfig, 'apiKey' | 'overlay'>>
     : './models/ggml-base.en.bin',
 
   hotkeyCombo: 'Ctrl+Shift+Space',
+  hotkeyMode: 'hold' as const,
   toggleHotkeyCombo: 'Ctrl+Shift+H',
   clipboardRestoreDelayMs: 150,
   clipboardRetention: 'keep-generated' as const,
   injectionMethod: 'auto' as const,
+  focusChangePolicy: 'copy' as const,
   progressiveInjection: false,
   queueMaxDepth: 3,
   prewarm: true,

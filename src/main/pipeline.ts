@@ -26,7 +26,11 @@ import {
 } from './context/index.js';
 import type { InjectOptions } from './inject.js';
 import { createSession, type Session } from './logger.js';
-import type { ProgressiveInjector } from './progressive-inject.js';
+import {
+  type GuardedProgressiveInjector,
+  guardProgressiveInjector,
+  type ProgressiveInjector,
+} from './progressive-inject.js';
 import type { LlmProvider } from './providers/index.js';
 import type { StopReason } from './providers/types.js';
 import { composeSystemPrompt, loadSkills } from './skills.js';
@@ -47,6 +51,8 @@ const DEFAULT_MAX_RECORD_MS = 5 * 60_000;
 const RECORDING_CANCELLED = 'recording cancelled';
 const CLIPBOARD_ONLY_NOTICE =
   'Copied to the clipboard instead of typing: an earlier attempt left part of this dictation in the target. Clear that text, then paste.';
+const FOCUS_CHANGED_NOTICE =
+  'Copied to the clipboard, not inserted: the active window changed since you started dictating. Click where you want it, then paste (Ctrl+V, or Cmd+V on macOS).';
 
 /**
  * Thrown when a capture contains no speech (too short, or whisper only heard
@@ -137,10 +143,16 @@ export interface ProcessPcmOptions {
   skillIds?: string[];
   /** Context snapshotted when the capture started (resolved after whisper runs). */
   context?: Promise<CapturedContext | null>;
+  /** Window that was in front when the capture started (see `focusChangePolicy`). */
+  target?: Promise<string | null>;
 }
 
-/** How a capture was started: held hotkey, or click/toggle (VAD may auto-stop it). */
-export type CaptureMode = 'ptt' | 'toggle';
+/**
+ * How a capture was started: held hotkey (`ptt`), pill click (`toggle`; VAD may
+ * auto-stop it), or a toggle-mode hotkey press (`hotkey-toggle`; only the next
+ * press ends it, so a thinking pause cannot cut a long dictation short).
+ */
+export type CaptureMode = 'ptt' | 'toggle' | 'hotkey-toggle';
 
 export interface RefineTextOptions {
   skillIds?: string[];
@@ -175,6 +187,11 @@ export interface PipelineDeps {
   whisperSupportsStreaming?: boolean;
   /** Snapshot active window / clipboard / screenshot when a capture starts. */
   captureContext?: () => Promise<CapturedContext | null>;
+  /**
+   * Opaque identity of the window in front right now, or null when it cannot
+   * be told. Compared by equality only and never logged.
+   */
+  getForegroundWindow?: () => Promise<string | null>;
   /** Cap for headless `record()`; defaults to 5 minutes. */
   maxRecordMs?: number;
 }
@@ -183,6 +200,7 @@ interface QueuedCapture {
   session: Session;
   buffer: ArrayBuffer;
   context: Promise<CapturedContext | null>;
+  target: Promise<string | null>;
 }
 
 interface PendingHeadlessRecord {
@@ -192,6 +210,7 @@ interface PendingHeadlessRecord {
 }
 
 const NO_CONTEXT: Promise<CapturedContext | null> = Promise.resolve(null);
+const NO_TARGET: Promise<string | null> = Promise.resolve(null);
 
 /** Where refinement requests (and so any shared context) are sent. */
 function destinationOf(provider: LlmProvider): string {
@@ -231,6 +250,9 @@ export class Pipeline {
   private lastErrorContextDestination = '';
   private sessionContext: Promise<CapturedContext | null> = NO_CONTEXT;
   private backgroundContext: Promise<CapturedContext | null> = NO_CONTEXT;
+  /** Front window when the live / background capture started, per session. */
+  private sessionTarget: Promise<string | null> = NO_TARGET;
+  private backgroundTarget: Promise<string | null> = NO_TARGET;
   private currentStatus: Status = 'idle';
   private statusBeforeQueueFull: Status = 'idle';
   private stopRequested = false;
@@ -327,10 +349,18 @@ export class Pipeline {
    */
   private async deliverRefined(
     refined: string,
-    how: { injector: ProgressiveInjector | null; clipboardOnly: boolean; inject: boolean },
+    how: {
+      injector: ProgressiveInjector | null;
+      /** `injector` with the window check; refused means nothing was typed. */
+      guarded?: GuardedProgressiveInjector | null;
+      /** Window the capture started in; unset for re-runs, which have no capture. */
+      target?: Promise<string | null>;
+      clipboardOnly: boolean;
+      inject: boolean;
+    },
     transcription: string,
     timings: Record<string, number | string>,
-  ): Promise<'inserted' | 'copied' | 'skipped'> {
+  ): Promise<'inserted' | 'copied' | 'copied-focus' | 'skipped'> {
     const { cfg } = this.deps;
     const start = Date.now();
     if (how.clipboardOnly) {
@@ -341,6 +371,15 @@ export class Pipeline {
     }
     if (how.injector) {
       const typing = await how.injector.flush();
+      if (how.guarded?.blocked()) {
+        // The user moved to another window before the first keystroke: nothing
+        // was typed there, so the whole prompt is safe to hand over by clipboard.
+        this.setStatus('injecting');
+        await this.copyForPaste(refined);
+        timings.injectMs = Date.now() - start;
+        timings.focusChanged = 1;
+        return 'copied-focus';
+      }
       timings.injectMs = Date.now() - start;
       if (typing.failed) {
         const copied = await this.tryCopy(refined);
@@ -363,6 +402,13 @@ export class Pipeline {
     if (!how.inject) return 'skipped';
     const injectFn = this.deps.inject;
     if (!injectFn) throw new Error('inject is not configured');
+    if (how.target && (await this.focusMoved(how.target))) {
+      this.setStatus('injecting');
+      await this.copyForPaste(refined);
+      timings.injectMs = Date.now() - start;
+      timings.focusChanged = 1;
+      return 'copied-focus';
+    }
     this.setStatus('injecting');
     await injectFn(refined, {
       clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
@@ -404,6 +450,40 @@ export class Pipeline {
       console.warn('[pipeline] context capture failed (continuing without it):', err);
       return null;
     });
+  }
+
+  /**
+   * Note which window is in front for a capture that is beginning now. Skipped
+   * (null) when the policy is `paste`, and never rejects: a window that cannot
+   * be identified simply means no check later.
+   */
+  private beginTarget(): Promise<string | null> {
+    const query = this.deps.getForegroundWindow;
+    if (!query || this.deps.cfg.focusChangePolicy !== 'copy') return NO_TARGET;
+    return query().catch((err) => {
+      console.warn('[pipeline] could not identify the active window (not guarding):', err);
+      return null;
+    });
+  }
+
+  /**
+   * True when the window in front now differs from the one a capture started
+   * in. Only a positively different identity counts: if either side is unknown
+   * the answer is false, so a platform that cannot tell windows apart behaves
+   * as before.
+   */
+  private async focusMoved(target: Promise<string | null>): Promise<boolean> {
+    const query = this.deps.getForegroundWindow;
+    if (!query || this.deps.cfg.focusChangePolicy !== 'copy') return false;
+    const startedIn = await target;
+    if (startedIn === null) return false;
+    try {
+      const now = await query();
+      return now !== null && now !== startedIn;
+    } catch (err) {
+      console.warn('[pipeline] could not identify the active window (not guarding):', err);
+      return false;
+    }
   }
 
   /**
@@ -562,7 +642,7 @@ export class Pipeline {
     const next = this.audioQueue.shift();
     if (!next) return;
     this.sendQueueDepth();
-    this.processBuffer(next.session, next.buffer, next.context).catch((err) => {
+    this.processBuffer(next.session, next.buffer, next.context, false, next.target).catch((err) => {
       console.error('[pipeline] queued item crashed:', err);
     });
   }
@@ -594,6 +674,7 @@ export class Pipeline {
     this.stopRequested = false;
     this.session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
     this.sessionContext = this.beginContext();
+    this.sessionTarget = this.beginTarget();
     console.log(`[pipeline] session=${this.session.dir} mode=${mode}`);
     this.setStatus(this.deps.cfg.vadEnabled ? 'vad-listening' : 'recording');
     this.requestRendererStart(mode === 'toggle');
@@ -639,17 +720,18 @@ export class Pipeline {
     }, AUDIO_TIMEOUT_MS);
   }
 
-  toggle(): void {
+  toggle(mode: Exclude<CaptureMode, 'ptt'> = 'toggle'): void {
     if (this.hasHeadlessPending()) return;
     if (this.state === 'idle') {
-      this.start('toggle');
+      this.start(mode);
     } else if (this.state === 'recording') {
       this.stop();
     } else if (this.state === 'processing') {
       if (this.backgroundSession === null) {
         this.backgroundSession = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
         this.backgroundContext = this.beginContext();
-        this.requestRendererStart(true);
+        this.backgroundTarget = this.beginTarget();
+        this.requestRendererStart(mode === 'toggle');
       } else {
         this.stopBackgroundCapture();
       }
@@ -668,6 +750,7 @@ export class Pipeline {
       console.warn('[pipeline] background recording produced no audio, discarding');
       this.backgroundSession = null;
       this.backgroundContext = NO_CONTEXT;
+      this.backgroundTarget = NO_TARGET;
       this.backgroundAudioTimeout = null;
     }, AUDIO_TIMEOUT_MS);
   }
@@ -676,6 +759,7 @@ export class Pipeline {
     this.state = 'idle';
     this.session = null;
     this.sessionContext = NO_CONTEXT;
+    this.sessionTarget = NO_TARGET;
     if (this.audioTimeout) {
       clearTimeout(this.audioTimeout);
       this.audioTimeout = null;
@@ -686,6 +770,7 @@ export class Pipeline {
     }
     this.backgroundSession = null;
     this.backgroundContext = NO_CONTEXT;
+    this.backgroundTarget = NO_TARGET;
     this.setStatus('idle');
   }
 
@@ -884,10 +969,18 @@ export class Pipeline {
     const pipelineStart = Date.now();
     let transientWavPath: string | null = null;
     let injector: ProgressiveInjector | null = null;
+    let guarded: GuardedProgressiveInjector | null = null;
     let spoken: string | null = null;
+    const target = opts.target ?? NO_TARGET;
 
     if (useProgressive) {
-      injector = this.deps.createProgressiveInjector?.() ?? null;
+      const inner = this.deps.createProgressiveInjector?.() ?? null;
+      // Typing begins with the first token, long before the run ends, so the
+      // window check has to gate the first keystroke, not the final insert.
+      if (inner) {
+        guarded = guardProgressiveInjector(inner, async () => !(await this.focusMoved(target)));
+        injector = guarded;
+      }
     }
 
     try {
@@ -989,7 +1082,7 @@ export class Pipeline {
 
       const delivered = await this.deliverRefined(
         refined,
-        { injector, clipboardOnly, inject: shouldInject },
+        { injector, guarded, target, clipboardOnly, inject: shouldInject },
         transcription,
         timings,
       );
@@ -1001,6 +1094,7 @@ export class Pipeline {
 
       this.setStatus('done');
       if (delivered === 'copied') this.sendNotice(CLIPBOARD_ONLY_NOTICE, session.dir);
+      if (delivered === 'copied-focus') this.sendNotice(FOCUS_CHANGED_NOTICE, session.dir);
       return { text: refined, transcription, sessionDir: session.dir, stopReason };
     } catch (err) {
       const typingFailure = await this.failureAfterTyping(err, injector, spoken, timings);
@@ -1025,12 +1119,13 @@ export class Pipeline {
     buffer: ArrayBuffer,
     context: Promise<CapturedContext | null> = NO_CONTEXT,
     clipboardOnly = false,
+    target: Promise<string | null> = NO_TARGET,
   ): Promise<void> {
     this.cancelIdle();
     this.state = 'processing';
 
     try {
-      await this.processPcm(buffer, { inject: true, context, clipboardOnly }, session);
+      await this.processPcm(buffer, { inject: true, context, clipboardOnly, target }, session);
       this.lastErrorSessionDir = null;
       this.lastErrorTranscription = null;
       this.lastErrorAudioBuffer = null;
@@ -1081,8 +1176,10 @@ export class Pipeline {
     this.state = 'recording';
     this.session = this.backgroundSession;
     this.sessionContext = this.backgroundContext;
+    this.sessionTarget = this.backgroundTarget;
     this.backgroundSession = null;
     this.backgroundContext = NO_CONTEXT;
+    this.backgroundTarget = NO_TARGET;
     this.stopRequested = stopping;
     if (stopping) {
       // Renderer was already told to stop; its audio is on the way.
@@ -1116,6 +1213,7 @@ export class Pipeline {
       inject: opts.inject ?? false,
       skillIds: opts.skillIds,
       context: this.beginContext(),
+      target: opts.inject ? this.beginTarget() : NO_TARGET,
     };
 
     const done = new Promise<ProcessPcmResult>((resolve, reject) => {
@@ -1258,10 +1356,12 @@ export class Pipeline {
     if (this.state === 'processing' && this.backgroundSession) {
       const session = this.backgroundSession;
       const context = this.backgroundContext;
+      const target = this.backgroundTarget;
       this.backgroundSession = null;
       this.backgroundContext = NO_CONTEXT;
+      this.backgroundTarget = NO_TARGET;
       if (buffer.byteLength > 0) {
-        this.enqueue({ session, buffer, context });
+        this.enqueue({ session, buffer, context, target });
       }
       return;
     }
@@ -1279,9 +1379,11 @@ export class Pipeline {
 
     const session = this.session;
     const context = this.sessionContext;
+    const target = this.sessionTarget;
     this.session = null;
     this.sessionContext = NO_CONTEXT;
-    await this.processBuffer(session, buffer, context);
+    this.sessionTarget = NO_TARGET;
+    await this.processBuffer(session, buffer, context, false, target);
   }
 
   async retry(): Promise<void> {

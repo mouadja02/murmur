@@ -317,9 +317,20 @@
         </div>
         <form id="hotkeys-form">
           <label>
-            <span>Push-to-talk <small>(hold to record)</small></span>
+            <span>Push-to-talk <small>(key combo to record)</small></span>
             <input id="cfg-hotkeyCombo" type="text" autocomplete="off" />
           </label>
+          <label>
+            <span>Push-to-talk mode</span>
+            <select id="cfg-hotkeyMode">
+              <option value="hold">Hold: record while the keys are held down</option>
+              <option value="toggle">Toggle: press once to start, again to stop</option>
+            </select>
+          </label>
+          <p class="hint">
+            Toggle mode never stops on a pause in your speech. Pressing the combo while a
+            dictation is still processing starts the next one in the background.
+          </p>
           <label>
             <span>Toggle overlay <small>(hide / show the pill)</small></span>
             <input id="cfg-toggleHotkeyCombo" type="text" autocomplete="off" />
@@ -343,6 +354,17 @@
               <option value="type">Type directly, also copy generated prompt</option>
             </select>
           </label>
+          <label>
+            <span>If the active window changed</span>
+            <select id="cfg-focusChangePolicy">
+              <option value="copy">Copy the prompt and notify me (nothing is pasted)</option>
+              <option value="paste">Paste anyway, into whichever window is in front</option>
+            </select>
+          </label>
+          <p class="hint">
+            Compares the window in front when you started dictating with the one in front when
+            the prompt is ready. If Murmur cannot tell the windows apart, it pastes as before.
+          </p>
           <label class="toggle">
             <input id="cfg-progressiveInjection" type="checkbox" />
             <span>Progressive injection — type the prompt at the cursor as it streams</span>
