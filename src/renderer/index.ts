@@ -22,8 +22,16 @@ declare global {
       openControlPanel: () => void;
       quit: () => void;
       onQueueDepth: (cb: (depth: number) => void) => void;
-      onError: (cb: (payload: { message: string; sessionDir: string }) => void) => void;
+      onError: (
+        cb: (payload: {
+          message: string;
+          sessionDir: string;
+          canInsertRaw?: boolean;
+          notice?: boolean;
+        }) => void,
+      ) => void;
       retry: () => void;
+      insertRaw: () => void;
       refineLast: () => void;
       openLogDir: (dir: string) => void;
       onVadConfig: (cb: (cfg: VadConfig) => void) => void;
@@ -98,6 +106,7 @@ const queueBadge = required<HTMLDivElement>('queue-badge');
 const errorToast = required<HTMLDivElement>('error-toast');
 const errorMsgEl = required<HTMLSpanElement>('error-message');
 const retryBtn = required<HTMLButtonElement>('retry-btn');
+const insertRawBtn = required<HTMLButtonElement>('insert-raw-btn');
 const logBtn = required<HTMLButtonElement>('log-btn');
 const dismissBtn = required<HTMLButtonElement>('dismiss-btn');
 
@@ -309,12 +318,21 @@ window.murmur.onQueueDepth((depth) => {
 window.murmur.onError((payload) => {
   lastErrorSessionDir = payload.sessionDir;
   errorMsgEl.textContent = payload.message;
+  // A notice (e.g. "copied instead of typed") has nothing to retry or insert.
+  errorToast.classList.toggle('notice', payload.notice === true);
+  retryBtn.hidden = payload.notice === true;
+  insertRawBtn.hidden = payload.notice === true || payload.canInsertRaw !== true;
   errorToast.classList.add('visible');
 });
 
 retryBtn.addEventListener('click', () => {
   dismissErrorToast();
   window.murmur.retry();
+});
+
+insertRawBtn.addEventListener('click', () => {
+  dismissErrorToast();
+  window.murmur.insertRaw();
 });
 
 logBtn.addEventListener('click', () => {

@@ -68,14 +68,72 @@ describe('createProgressiveInjector', () => {
     assert.equal(typed.includes('c'), false);
   });
 
-  it('flush resolves even if a typeFn call rejects', async () => {
+  it('flush reports what was typed when every chunk succeeds', async () => {
+    const injector = createProgressiveInjector({ typeFn: async () => {} });
+
+    injector.pushToken('Hello ');
+    injector.pushToken('world');
+
+    assert.deepEqual(await injector.flush(), { typed: 'Hello world', failed: false });
+  });
+
+  it('stops at the first typeFn rejection instead of skipping the chunk', async () => {
+    const error = new Error('focus lost');
+    const typed = [];
     const injector = createProgressiveInjector({
-      typeFn: async () => {
-        throw new Error('type failed');
+      typeFn: async (text) => {
+        if (text === 'c') throw error;
+        typed.push(text);
+      },
+    });
+
+    for (const token of ['a', 'b', 'c', 'd', 'e']) injector.pushToken(token);
+    const result = await injector.flush();
+
+    assert.deepEqual(typed, ['a', 'b']);
+    assert.deepEqual(result, { typed: 'ab', failed: true, error });
+  });
+
+  it('keeps reporting the failure to later flushes and ignores later tokens', async () => {
+    const typed = [];
+    const injector = createProgressiveInjector({
+      typeFn: async (text) => {
+        if (text === 'a') throw new Error('boom');
+        typed.push(text);
       },
     });
 
     injector.pushToken('a');
-    await injector.flush();
+    assert.equal((await injector.flush()).failed, true);
+    injector.pushToken('b');
+    const second = await injector.flush();
+
+    assert.equal(second.failed, true);
+    assert.deepEqual(typed, []);
+  });
+
+  it('abort waits for the chunk being typed and reports what reached the target', async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const typed = [];
+    const injector = createProgressiveInjector({
+      typeFn: async (text) => {
+        if (text === 'b') await gate;
+        typed.push(text);
+      },
+    });
+
+    injector.pushToken('a');
+    injector.pushToken('b');
+    injector.pushToken('c');
+    await new Promise((r) => setTimeout(r, 10));
+    const aborted = injector.abort();
+    release();
+    const result = await aborted;
+
+    assert.deepEqual(typed, ['a', 'b']);
+    assert.deepEqual(result, { typed: 'ab', failed: false });
   });
 });

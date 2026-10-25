@@ -7,6 +7,7 @@ import {
   IPC_END_WINDOW_DRAG,
   IPC_HIDE_OVERLAY,
   IPC_INFO,
+  IPC_INSERT_RAW,
   IPC_OPEN_CONTROL_PANEL,
   IPC_OPEN_LOG_DIR,
   IPC_QUIT,
@@ -225,6 +226,7 @@ function showContextMenu(): void {
   const providerLabel = `${PROVIDER_PRESETS[r.provider].displayName} · ${r.model}`;
   const panelUrl = controlPanel?.url ?? 'http://localhost:7331';
   const canRefineLast = pipeline?.hasLastTranscription() ?? false;
+  const canInsertRaw = pipeline?.canInsertRaw() ?? false;
 
   const menu = Menu.buildFromTemplate([
     {
@@ -233,6 +235,15 @@ function showContextMenu(): void {
       click: () => {
         pipeline?.refineLast().catch((err) => {
           console.error('[main] refineLast failed:', err);
+        });
+      },
+    },
+    {
+      label: 'Insert raw transcription',
+      enabled: canInsertRaw,
+      click: () => {
+        pipeline?.insertRaw().catch((err) => {
+          console.error('[main] insertRaw failed:', err);
         });
       },
     },
@@ -348,6 +359,12 @@ function wireIPC(): void {
     });
   });
 
+  ipcMain.on(IPC_INSERT_RAW, () => {
+    pipeline?.insertRaw().catch((err) => {
+      console.error('[main] insertRaw failed:', err);
+    });
+  });
+
   ipcMain.on(IPC_REFINE_LAST, () => {
     if (!pipeline?.hasLastTranscription()) return;
     pipeline.refineLast().catch((err) => {
@@ -421,6 +438,8 @@ function createMainPipeline(): Pipeline {
     },
     inject: injectText,
     copyToClipboard: async (text) => {
+      // Like injectText: Murmur's own output must not come back as clipboard context.
+      ignoreClipboardText(text);
       await clipboard.writeText(text);
     },
     createRecorder: () => new CommandAudioRecorder({ commandLine: cfg.recorderCommand }),

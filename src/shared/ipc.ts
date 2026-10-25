@@ -28,6 +28,7 @@ export const IPC_QUEUE_DEPTH = 'murmur:queue-depth'; // payload: number
 export const IPC_ERROR = 'murmur:error'; // payload: ErrorPayload
 // renderer → main
 export const IPC_RETRY = 'murmur:retry';
+export const IPC_INSERT_RAW = 'murmur:insert-raw';
 export const IPC_OPEN_LOG_DIR = 'murmur:open-log-dir'; // payload: string
 
 export type Status =
@@ -73,6 +74,10 @@ export interface ErrorPayload {
   transcription?: string;
   stopReason?: 'length' | 'aborted';
   copiedToClipboard?: boolean;
+  /** The words behind this error are still held, so "Insert raw" can use them. */
+  canInsertRaw?: boolean;
+  /** Informational, not a failure: no Retry / Insert raw. */
+  notice?: boolean;
 }
 
 /** Sent right before IPC_START_RECORDING to say how this capture should end. */
