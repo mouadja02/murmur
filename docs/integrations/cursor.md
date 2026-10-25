@@ -64,7 +64,8 @@ Restart Cursor (or reload MCP from **Settings → Tools & MCP**) after saving th
 
 - **Prefer `duration_ms`** on `murmur_record` for a single tool call (e.g. `duration_ms: 5000`).
 - Without `duration_ms`, call `murmur_stop_record` when you are done speaking.
-- `inject` defaults to `false` and should stay `false` in `murmur serve`; paste injection is only available through the Electron overlay.
+- A recording lasts only as long as its caller: if the tool call is cancelled or times out, or the client disconnects, the microphone stops and the audio is discarded. A recording is also cut off after 5 minutes (the result then has `stoppedAtLimit: true`).
+- `inject` defaults to `false`. `murmur serve` rejects `inject: true` up front (before the microphone starts); paste injection is only available through the Electron overlay.
 - Optional `skill_ids` overrides which skills apply for that call.
 
 In Agent chat, ask Cursor to use Murmur tools explicitly, e.g. *"Call murmur_record with duration_ms 6000 and use the result as my prompt."*
@@ -76,7 +77,7 @@ In Agent chat, ask Cursor to use Murmur tools explicitly, e.g. *"Call murmur_rec
 | Server shows disconnected | Confirm `murmur serve` is running; check **Settings → Tools & MCP** |
 | `headless recorder command not found: sox` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `--recorder-command` |
 | Tools missing after edit | Restart Cursor — MCP config is loaded at startup |
-| `pipeline is busy` | Wait for the current recording/processing to finish |
+| `pipeline is busy` | Wait for the current recording/processing to finish. If an agent left a recording open, call `murmur_stop_record` |
 
 ## See also
 

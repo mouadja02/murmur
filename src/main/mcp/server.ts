@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { createServer, type Server, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import type { ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { TokenPhase } from '../../shared/ipc.js';
 import { updateConfigFile as defaultUpdateConfigFile } from '../config/file.js';
@@ -14,6 +16,51 @@ import { IncompleteRefinementError } from '../pipeline.js';
 import { isValidSkillId, loadSkills } from '../skills.js';
 
 const PIPELINE_BUSY_MESSAGE = 'pipeline is busy (recording or processing)';
+
+/** Time `stop()` gives open connections to finish before it drops them. */
+const SHUTDOWN_GRACE_MS = 500;
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+
+type JsonRpcId = string | number;
+
+/**
+ * Each HTTP request gets its own stateless MCP server, so a client's
+ * `notifications/cancelled` (sent as a separate POST) cannot reach the server
+ * instance running the call it names. This registry carries cancellations
+ * between those instances.
+ *
+ * Without MCP sessions a request id is only unique per client, so a different
+ * client cancelling an id equal to an in-flight record's id would cancel that
+ * record. Only a record can be affected (the pipeline allows one at a time),
+ * and a cancelled record is simply re-run.
+ */
+export class RequestCancellations {
+  private readonly active = new Map<string, AbortController>();
+
+  private static key(id: JsonRpcId): string {
+    return `${typeof id}:${id}`;
+  }
+
+  /** Signal that aborts when `id` is cancelled. Call `release` when the request ends. */
+  track(id: JsonRpcId): { signal: AbortSignal; release(): void } {
+    const key = RequestCancellations.key(id);
+    const controller = new AbortController();
+    this.active.set(key, controller);
+    return {
+      signal: controller.signal,
+      release: () => {
+        if (this.active.get(key) === controller) this.active.delete(key);
+      },
+    };
+  }
+
+  cancel(id: JsonRpcId): boolean {
+    const controller = this.active.get(RequestCancellations.key(id));
+    if (!controller) return false;
+    controller.abort();
+    return true;
+  }
+}
 
 /** <pkg>/dist/main/mcp/server.js -> <pkg>/package.json */
 const PACKAGE_VERSION = (() => {
@@ -67,6 +114,8 @@ export type MurmurMcpServerDeps = {
   getPipeline: () => McpPipeline;
   onConfigUpdated: () => void;
   updateConfigFile?: typeof defaultUpdateConfigFile;
+  /** Shared across the per-request servers of one HTTP listener. */
+  cancellations?: RequestCancellations;
 };
 
 function textResult(output: Record<string, unknown> & { text: string }): ToolResult {
@@ -151,19 +200,29 @@ function registerMurmurTools(
     inject: z.boolean().optional(),
   };
 
-  const recordHandler = async (args: {
-    duration_ms?: number;
-    skill_ids?: string[];
-    inject?: boolean;
-  }): Promise<ToolResult> => {
+  const recordHandler = async (
+    args: {
+      duration_ms?: number;
+      skill_ids?: string[];
+      inject?: boolean;
+    },
+    extra?: RequestHandlerExtra<ServerRequest, ServerNotification>,
+  ): Promise<ToolResult> => {
     const pipeline = deps.getPipeline();
     const listener = (token: string, phase: TokenPhase) => emitStreamToken(token, phase);
     pipeline.addTokenListener(listener);
+    // The microphone stays open only while the caller is waiting: a cancel
+    // (same-instance or relayed from another POST) or a dropped connection
+    // aborts the recording.
+    const cancelled =
+      extra?.requestId !== undefined ? deps.cancellations?.track(extra.requestId) : undefined;
+    const signals = [extra?.signal, cancelled?.signal].filter((s) => s !== undefined);
     try {
       const result = await pipeline.record({
         durationMs: args.duration_ms,
         skillIds: args.skill_ids,
         inject: args.inject ?? false,
+        ...(signals.length > 0 ? { signal: AbortSignal.any(signals) } : {}),
       });
       // A length-limited or aborted refinement never gets here: the pipeline
       // throws IncompleteRefinementError, which toolError() turns into a
@@ -173,10 +232,12 @@ function registerMurmurTools(
         transcription: result.transcription,
         sessionDir: result.sessionDir,
         stopReason: result.stopReason ?? 'end',
+        ...(result.stoppedAtLimit ? { stoppedAtLimit: true } : {}),
       });
     } catch (err) {
       return toolError(err);
     } finally {
+      cancelled?.release();
       pipeline.removeTokenListener(listener);
     }
   };
@@ -185,7 +246,7 @@ function registerMurmurTools(
     'murmur_record',
     {
       description:
-        'Record a voice prompt and return the refined text. Starts recording immediately; call murmur_stop_record or pass duration_ms to auto-stop. Streams partial transcription and refinement tokens as logging notifications. When progressive injection is enabled, tokens are also typed at the cursor as they stream.',
+        'Record a voice prompt and return the refined text. Starts recording immediately; call murmur_stop_record or pass duration_ms to auto-stop. Recording also stops (and is discarded) if the request is cancelled or the connection drops, and is cut off after at most 5 minutes (stoppedAtLimit: true in the result). Streams partial transcription and refinement tokens as logging notifications. When progressive injection is enabled, tokens are also typed at the cursor as they stream. inject: true is rejected by `murmur serve`, which cannot type into other apps.',
       inputSchema: recordSchema,
     },
     recordHandler,
@@ -348,11 +409,64 @@ export function createMurmurMcpServer(deps: MurmurMcpServerDeps): MurmurMcpServe
   };
 }
 
+/** Reads and parses a JSON request body; `undefined` if empty, throws if invalid or too large. */
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.from(chunk as Buffer);
+    size += buf.length;
+    if (size > MAX_REQUEST_BODY_BYTES) throw new RequestBodyError(413, 'request body too large');
+    chunks.push(buf);
+  }
+  if (size === 0) return undefined;
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new RequestBodyError(400, 'invalid JSON');
+  }
+}
+
+class RequestBodyError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Relays any `notifications/cancelled` in a POST body to the call it names. */
+function relayCancellations(body: unknown, cancellations: RequestCancellations): void {
+  for (const message of Array.isArray(body) ? body : [body]) {
+    if (!message || typeof message !== 'object') continue;
+    const { method, params } = message as { method?: unknown; params?: { requestId?: unknown } };
+    if (method !== 'notifications/cancelled') continue;
+    const id = params?.requestId;
+    if (typeof id === 'string' || typeof id === 'number') cancellations.cancel(id);
+  }
+}
+
 async function handleMcpHttpRequest(
-  req: import('node:http').IncomingMessage,
+  req: IncomingMessage,
   res: ServerResponse,
   deps: StartMcpServerDeps,
+  cancellations: RequestCancellations,
 ): Promise<void> {
+  let body: unknown;
+  if (req.method === 'POST') {
+    try {
+      body = await readJsonBody(req);
+    } catch (err) {
+      if (err instanceof RequestBodyError) {
+        sendJson(res, err.status, { error: err.message });
+        return;
+      }
+      throw err;
+    }
+    relayCancellations(body, cancellations);
+  }
+
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
@@ -361,12 +475,20 @@ async function handleMcpHttpRequest(
     getConfig: deps.getConfig,
     getPipeline: deps.getPipeline,
     onConfigUpdated: deps.onConfigUpdated,
+    cancellations,
   });
   deps.onMcpServerCreated?.();
 
+  // A caller that disconnects before its response is written (killed IDE,
+  // dropped socket, shutdown) will never read the result: closing the server
+  // aborts its in-flight tool calls, which releases the microphone.
+  res.once('close', () => {
+    if (!res.writableFinished) void murmur.server.close().catch(() => undefined);
+  });
+
   try {
     await murmur.server.connect(transport);
-    await transport.handleRequest(req, res);
+    await transport.handleRequest(req, res, body);
   } catch (err) {
     console.error('[mcp] request failed:', err);
     if (!res.headersSent) {
@@ -379,6 +501,7 @@ async function handleMcpHttpRequest(
 }
 
 export async function startMcpServer(deps: StartMcpServerDeps): Promise<McpServerHandle> {
+  const cancellations = new RequestCancellations();
   const httpServer: Server = createServer(async (req, res) => {
     // murmur_record turns on the microphone; never let a web page reach it via
     // DNS rebinding or a cross-site request (MCP spec: servers MUST validate
@@ -392,7 +515,7 @@ export async function startMcpServer(deps: StartMcpServerDeps): Promise<McpServe
       sendJson(res, 404, { error: 'not found' });
       return;
     }
-    await handleMcpHttpRequest(req, res, deps);
+    await handleMcpHttpRequest(req, res, deps, cancellations);
   });
 
   const desiredPort = deps.cfg.mcpPort;
@@ -408,7 +531,15 @@ export async function startMcpServer(deps: StartMcpServerDeps): Promise<McpServe
         url: `http://127.0.0.1:${boundPort}/mcp`,
         stop: () =>
           new Promise<void>((res, rej) => {
-            httpServer.close((err) => (err ? rej(err) : res()));
+            // close() waits for every connection; a connected client's SSE
+            // stream or an in-flight record would hold it open indefinitely.
+            const force = setTimeout(() => httpServer.closeAllConnections(), SHUTDOWN_GRACE_MS);
+            httpServer.close((err) => {
+              clearTimeout(force);
+              if (err) rej(err);
+              else res();
+            });
+            httpServer.closeIdleConnections();
           }),
       });
     });

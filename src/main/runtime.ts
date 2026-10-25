@@ -42,9 +42,8 @@ function createHeadlessPipeline(
     cfg,
     provider,
     emitStatus: (s) => console.log(`[murmur] status=${s}`),
-    inject: async () => {
-      throw new Error('injection is unavailable in headless serve mode');
-    },
+    // No `inject`: headless serve cannot type into other apps, so the pipeline
+    // rejects `inject: true` before it opens the microphone.
     createRecorder: () => new CommandAudioRecorder({ commandLine: cfg.recorderCommand }),
     whisperSupportsStreaming: whisperStreaming,
   });

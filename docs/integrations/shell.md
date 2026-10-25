@@ -52,9 +52,9 @@ Environment override: `MURMUR_MCP_PORT=7332` (same precedence as other Murmur en
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `duration_ms` | number (optional) | Auto-stop after N ms — **preferred for scripts and agents** |
+| `duration_ms` | number (optional) | Auto-stop after N ms — **preferred for scripts and agents**. Recordings are cut off after 5 minutes either way (`stoppedAtLimit: true`); a cancelled request or dropped connection stops the microphone and discards the audio |
 | `skill_ids` | string[] (optional) | Override enabled skills for this call |
-| `inject` | boolean (optional) | Default `false`; keep `false` in `murmur serve` because paste injection is only available through the Electron overlay |
+| `inject` | boolean (optional) | Default `false`; `murmur serve` rejects `true` before recording because paste injection is only available through the Electron overlay |
 
 ### Example agent instructions
 
@@ -99,7 +99,7 @@ A `404` on `/mcp` usually means Murmur is not running or the port is wrong.
 | `winget` says SoX is installed, but `sox --version` fails | The portable install may be incomplete or not linked into `PATH`. Run `winget uninstall --id ChrisBagwell.SoX -e`, reinstall it, restart the terminal, and verify `sox --version` |
 | Port in use | Change `--mcp-port` or free the port |
 | `file_path must be absolute` | Pass a full path to `murmur_transcribe` |
-| `pipeline is busy` | Only one MCP recording at a time |
+| `pipeline is busy` | Only one MCP recording at a time. If a client left one open, call `murmur_stop_record` |
 
 ## See also
 

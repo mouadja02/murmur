@@ -91,6 +91,32 @@ describe('Murmur MCP tool handlers', () => {
     assert.equal(result.isError, undefined);
   });
 
+  it('hands the pipeline an abort signal and reports a record cut off at the limit', async () => {
+    const calls = [];
+    const server = createMurmurMcpServer({
+      getConfig: () => cfg(dir),
+      onConfigUpdated: () => {},
+      getPipeline: () =>
+        idlePipeline({
+          record: async (opts) => {
+            calls.push(opts);
+            return {
+              text: 'refined voice',
+              transcription: 'raw',
+              sessionDir: '/tmp/s',
+              stoppedAtLimit: true,
+            };
+          },
+        }),
+    });
+
+    const result = await server.callToolForTest('murmur_record', {});
+
+    assert.equal(result.structuredContent.stoppedAtLimit, true);
+    assert.equal(result.content[0].text, 'refined voice');
+    assert.equal(calls.length, 1);
+  });
+
   it('refines text with skill overrides', async () => {
     const server = createMurmurMcpServer({
       getConfig: () => cfg(dir),

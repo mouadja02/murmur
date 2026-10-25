@@ -307,8 +307,14 @@ export function loadConfig(opts: LoadConfigOptions): LoadedConfig {
       skillsDir: path.resolve(userDataDir, 'skills'),
     };
     for (const key of Object.keys(env)) delete seedDefaults[key];
-    written = writeDefaultConfigIfMissing(configFilePath, seedDefaults);
-    if (written) fileLoad = readConfigFile(configFilePath);
+    if (cli.helpAndExit || cli.printAndExit) {
+      // Informational runs must not leave a config file behind; show the values
+      // a real first run would seed.
+      fileLoad = { ...fileLoad, partial: sanitizePartial(seedDefaults, 'seed defaults') };
+    } else {
+      written = writeDefaultConfigIfMissing(configFilePath, seedDefaults);
+      if (written) fileLoad = readConfigFile(configFilePath);
+    }
   } else if (process.platform !== 'win32' && fileLoad.partial.whisperCliPath) {
     // Migration: if an existing Linux/macOS config has a Windows-style path
     // (contains backslash or /mnt/c/) or an absolute path that no longer exists

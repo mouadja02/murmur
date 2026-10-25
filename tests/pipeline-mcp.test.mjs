@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -364,6 +364,163 @@ describe('Pipeline MCP / headless', () => {
 
     const result = await pipeline.record({ durationMs: 1, inject: false });
     assert.equal(result.text, 'REFINED: recovered');
+  });
+
+  describe('headless recording lifetime', () => {
+    function lifetimePipeline(extra = {}) {
+      const cfg = makeFakeConfig({ _baseDir: tempBase });
+      const recorders = [];
+      const pipeline = new Pipeline({
+        cfg,
+        provider: makeFakeProvider([]),
+        transcribeAudio: async () => ({ text: 'dictated', stderr: '', durationMs: 1 }),
+        createRecorder: () => {
+          const recorder = {
+            starts: 0,
+            stops: 0,
+            exitListener: null,
+            async start() {
+              recorder.starts += 1;
+            },
+            async stop() {
+              recorder.stops += 1;
+              return samplePcm();
+            },
+            onUnexpectedExit(listener) {
+              recorder.exitListener = listener;
+            },
+          };
+          recorders.push(recorder);
+          return recorder;
+        },
+        ...extra,
+      });
+      return { pipeline, recorders };
+    }
+
+    const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+    it('aborting an open-ended record stops the recorder, rejects it and frees the pipeline', async () => {
+      const { pipeline, recorders } = lifetimePipeline();
+      const controller = new AbortController();
+
+      const rejected = assert.rejects(pipeline.record({ signal: controller.signal }), /cancelled/i);
+      await tick();
+      assert.equal(pipeline.isBusy(), true);
+
+      controller.abort();
+      await rejected;
+
+      assert.equal(recorders[0].stops, 1);
+      assert.equal(pipeline.isBusy(), false);
+      const [cancelled] = readdirSync(path.join(tempBase, 'logs'));
+      const timings = JSON.parse(
+        readFileSync(path.join(tempBase, 'logs', cancelled, 'timings.json'), 'utf8'),
+      );
+      assert.equal(timings.outcome, 'cancelled');
+      const next = await pipeline.record({ durationMs: 1 });
+      assert.equal(next.text, 'REFINED: dictated');
+    });
+
+    it('rejects a record whose signal is already aborted without creating a recorder', async () => {
+      const { pipeline, recorders } = lifetimePipeline();
+
+      await assert.rejects(pipeline.record({ signal: AbortSignal.abort() }), /cancelled/i);
+
+      assert.equal(recorders.length, 0);
+      assert.equal(pipeline.isBusy(), false);
+    });
+
+    it('aborting a timed record cancels it before the timer fires', async () => {
+      const { pipeline, recorders } = lifetimePipeline();
+      const controller = new AbortController();
+
+      const rejected = assert.rejects(
+        pipeline.record({ durationMs: 60_000, signal: controller.signal }),
+        /cancelled/i,
+      );
+      await tick();
+      controller.abort();
+      await rejected;
+
+      assert.equal(recorders[0].stops, 1);
+      assert.equal(pipeline.isBusy(), false);
+    });
+
+    it('ignores an abort that arrives after the recorder was told to stop', async () => {
+      const { pipeline, recorders } = lifetimePipeline();
+      const controller = new AbortController();
+
+      const pending = pipeline.record({ signal: controller.signal });
+      await tick();
+      const stopped = pipeline.stopRecording();
+      controller.abort();
+
+      assert.equal((await pending).text, 'REFINED: dictated');
+      assert.equal((await stopped).text, 'REFINED: dictated');
+      assert.equal(recorders[0].stops, 1);
+    });
+
+    it('stopRecording also resolves a timed record that is still waiting on its timer', async () => {
+      const { pipeline } = lifetimePipeline();
+
+      const timed = pipeline.record({ durationMs: 60_000 });
+      await tick();
+      await pipeline.stopRecording();
+
+      assert.equal((await timed).text, 'REFINED: dictated');
+      assert.equal(pipeline.isBusy(), false);
+    });
+
+    it('stops an open-ended record at maxRecordMs and flags it', async () => {
+      const { pipeline, recorders } = lifetimePipeline({ maxRecordMs: 40 });
+
+      const result = await pipeline.record({});
+
+      assert.equal(result.text, 'REFINED: dictated');
+      assert.equal(result.stoppedAtLimit, true);
+      assert.equal(recorders[0].stops, 1);
+      assert.equal(pipeline.isBusy(), false);
+    });
+
+    it('clamps a longer duration_ms to maxRecordMs but leaves a shorter one alone', async () => {
+      const { pipeline } = lifetimePipeline({ maxRecordMs: 40 });
+
+      const clamped = await pipeline.record({ durationMs: 60_000 });
+      assert.equal(clamped.stoppedAtLimit, true);
+
+      const timed = await pipeline.record({ durationMs: 5 });
+      assert.equal(timed.stoppedAtLimit, undefined);
+    });
+
+    it('rejects the pending record with the recorder error when it exits on its own', async () => {
+      const { pipeline, recorders } = lifetimePipeline();
+
+      const rejected = assert.rejects(
+        pipeline.record({}),
+        /recorder exited with code 2.*device unplugged/s,
+      );
+      await tick();
+      recorders[0].exitListener(
+        new Error('recorder exited with code 2. stderr:\ndevice unplugged'),
+      );
+      await rejected;
+
+      assert.equal(pipeline.isBusy(), false);
+      assert.equal(recorders[0].stops, 0, 'the dead recorder is not stopped again');
+    });
+
+    it('rejects inject:true without a text inserter before creating the recorder', async () => {
+      const { pipeline, recorders } = lifetimePipeline();
+
+      await assert.rejects(
+        pipeline.record({ durationMs: 1, inject: true }),
+        /injection is unavailable/i,
+      );
+
+      assert.equal(recorders.length, 0);
+      assert.equal(pipeline.isBusy(), false);
+    });
   });
 });
 

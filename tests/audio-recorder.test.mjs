@@ -73,6 +73,41 @@ describe('CommandAudioRecorder', () => {
     assert.equal(child.killCalls.length, 0);
   });
 
+  it('reports a child that exits on its own, with its code and stderr', async () => {
+    const child = fakeChild({ killEmitsClose: false });
+    const recorder = new CommandAudioRecorder({
+      commandLine: 'recorder --raw',
+      spawnFn: spawnWithEmit(child),
+    });
+    const exits = [];
+    recorder.onUnexpectedExit((err) => exits.push(err));
+
+    await recorder.start();
+    child.stderr.write('device unplugged');
+    await new Promise((resolve) => setImmediate(resolve));
+    child.emit('close', 2);
+
+    assert.equal(exits.length, 1);
+    assert.match(exits[0].message, /code 2/);
+    assert.match(exits[0].message, /device unplugged/);
+  });
+
+  it('does not report an exit that stop() caused', async () => {
+    const child = fakeChild();
+    const recorder = new CommandAudioRecorder({
+      commandLine: 'recorder --raw',
+      spawnFn: spawnWithEmit(child),
+    });
+    const exits = [];
+    recorder.onUnexpectedExit((err) => exits.push(err));
+
+    await recorder.start();
+    child.stdout.write(Buffer.from([1, 2]));
+    await recorder.stop();
+
+    assert.deepEqual(exits, []);
+  });
+
   it('rejects when the recorder exits before producing audio', async () => {
     const child = fakeChild();
     const recorder = new CommandAudioRecorder({

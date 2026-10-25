@@ -1,8 +1,20 @@
 import 'dotenv/config';
-import { getUserDataDir } from './config/index.js';
+import { parseCli } from './config/cli.js';
+import { getUserDataDir, HELP_TEXT, loadConfig, printResolvedConfig } from './config/index.js';
 import { createRuntime } from './runtime.js';
 
 async function main(): Promise<void> {
+  // --help / --print-config answer before any preflight, server or recorder.
+  const cli = parseCli(process.argv);
+  if (cli.helpAndExit) {
+    console.log(HELP_TEXT);
+    return;
+  }
+  if (cli.printAndExit) {
+    printResolvedConfig(loadConfig({ userDataDir: getUserDataDir('murmur'), argv: process.argv }));
+    return;
+  }
+
   const runtime = await createRuntime({
     userDataDir: getUserDataDir('murmur'),
     argv: process.argv,
