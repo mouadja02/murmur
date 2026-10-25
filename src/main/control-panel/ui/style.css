@@ -789,7 +789,8 @@ code {
 }
 
 .hidden {
-  display: none;
+  /* biome-ignore lint/complexity/noImportantStyles: component rules (#skill-form, .online-warning) set display and would otherwise win */
+  display: none !important;
 }
 
 .toast {
