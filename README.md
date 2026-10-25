@@ -185,6 +185,10 @@ Four stages, strictly local:
 | **Refine** | Your local LLM rewrites the transcription into a concise prompt using your active system prompt + enabled skills. |
 | **Inject** | Murmur copies the refined text, fires `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) at your current cursor, and keeps the generated prompt on your clipboard by default. |
 
+**When a step fails after your words were transcribed**, the error toast offers **Retry** and **Insert raw**, which inserts exactly what you said, with no provider call. If inserting fails too, the text goes to the clipboard instead. The right-click menu has the same **Insert raw transcription** item. A failed `murmur_record` MCP call returns the transcription in `structuredContent` as well.
+
+**Progressive injection** (typing as tokens stream) stops at the first chunk it cannot type instead of skipping it, so a prompt never loses words from its middle. The dictation is then reported as an error, and the full prompt is copied to the clipboard. If part of a dictation is already in the target (typing stopped, or the stream failed mid-way), **Retry**, **Refine last** and **Insert raw** copy to the clipboard rather than typing over it. The toast says so; clear the partial text and paste.
+
 Every session gets a timestamped folder under `logs/`. By default it stores timings and errors only; enable **Full debugging** in the control panel if you want audio, raw transcription, system prompt, and refined output persisted locally.
 
 ---
@@ -194,7 +198,7 @@ Every session gets a timestamped folder under `logs/`. By default it stores timi
 - **One-click or push-to-talk** — click the pill, or hold `Ctrl+Shift+Space`.
 - **Drag anywhere** — pill position is saved and survives restart.
 - **Toggle hotkey** — `Ctrl+Shift+H` hides / shows the overlay from any app.
-- **Right-click menu** — open the control panel, reset position, quit.
+- **Right-click menu** — refine the last transcription, insert the raw transcription after a failure, open the control panel, reset position, quit.
 - **Control panel on localhost** — browser-based UI for system prompt, skills, provider, hotkeys, and paths. Changes hot-reload without restarting, and a value the config rejects (for example a base URL without `http://`) is refused with a message next to the field instead of being reported as saved.
 - **Skills as Markdown** — drop `.md` files into `./skills/`, toggle them on/off from the panel. Import directly from a local file or a raw URL. Version-controllable, shareable.
 - **CLI / env override badges** — when a field's value comes from a `--flag` or env var, the control panel marks it read-only with a clear badge and tooltip explaining exactly how to unlock it. If an env var is set but a flag or `config.json` outranks it, the field stays editable and a note says why the env var has no effect.
@@ -312,7 +316,7 @@ pnpm dev --provider openai-compat --base-url https://api.groq.com/openai/v1 --mo
 | **Hold** `Ctrl+Shift+Space` | Push-to-talk: records while held, processes on release |
 | **Tap** `Ctrl+Shift+H` | Show / hide the overlay from anywhere |
 | **Drag** the pill | Moves it; the new position survives restart |
-| **Right-click** the pill | Context menu: open control panel · hide · reset position · quit |
+| **Right-click** the pill | Context menu: refine last · insert raw transcription · open control panel · hide · reset position · quit |
 | **Hover** the pill | Tooltip with provider · model · both hotkeys · hints |
 
 ### From the terminal

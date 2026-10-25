@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { createMurmurMcpServer, startMcpServer } from '../dist/main/mcp/server.js';
-import { IncompleteRefinementError } from '../dist/main/pipeline.js';
+import {
+  DictationError,
+  IncompleteRefinementError,
+  PartialInsertionError,
+} from '../dist/main/pipeline.js';
 
 function cfg(dir) {
   return {
@@ -187,6 +191,48 @@ describe('Murmur MCP tool handlers', () => {
     assert.equal(result.structuredContent.text, 'partial voice');
     assert.equal(result.structuredContent.transcription, 'spoken request');
     assert.equal(result.structuredContent.copiedToClipboard, true);
+  });
+
+  it('returns the transcription with a record that failed after transcription', async () => {
+    const server = createMurmurMcpServer({
+      getConfig: () => cfg(dir),
+      onConfigUpdated: () => {},
+      getPipeline: () =>
+        idlePipeline({
+          record: async () => {
+            throw new DictationError('Ollama unreachable', 'spoken request');
+          },
+        }),
+    });
+
+    const result = await server.callToolForTest('murmur_record', { duration_ms: 5 });
+
+    assert.equal(result.isError, true);
+    assert.equal(result.content[0].text, 'Ollama unreachable');
+    assert.deepEqual(result.structuredContent, { transcription: 'spoken request' });
+  });
+
+  it('reports a partial insertion with the transcription', async () => {
+    const server = createMurmurMcpServer({
+      getConfig: () => cfg(dir),
+      onConfigUpdated: () => {},
+      getPipeline: () =>
+        idlePipeline({
+          record: async () => {
+            throw new PartialInsertionError('Typing stopped', 'spoken request', 12, true);
+          },
+        }),
+    });
+
+    const result = await server.callToolForTest('murmur_record', { duration_ms: 5, inject: true });
+
+    assert.equal(result.isError, true);
+    assert.deepEqual(result.structuredContent, {
+      transcription: 'spoken request',
+      partialInsertion: true,
+      typedChars: 12,
+      copiedToClipboard: true,
+    });
   });
 
   it('returns tool error for invalid refine arguments', async () => {

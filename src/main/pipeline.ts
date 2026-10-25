@@ -45,6 +45,8 @@ const MIN_SPEECH_MS = 250;
  */
 const DEFAULT_MAX_RECORD_MS = 5 * 60_000;
 const RECORDING_CANCELLED = 'recording cancelled';
+const CLIPBOARD_ONLY_NOTICE =
+  'Copied to the clipboard instead of typing: an earlier attempt left part of this dictation in the target. Clear that text, then paste.';
 
 /**
  * Thrown when a capture contains no speech (too short, or whisper only heard
@@ -59,14 +61,30 @@ export class NoSpeechError extends Error {
 }
 
 /**
+ * A dictation failed after its speech was transcribed. Carrying the words lets
+ * the overlay offer "Insert raw" and MCP callers recover them instead of
+ * re-speaking.
+ */
+export class DictationError extends Error {
+  constructor(
+    message: string,
+    public readonly transcription: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'DictationError';
+  }
+}
+
+/**
  * A provider returned text but explicitly said generation was incomplete.
  * Keeping this distinct from transport errors lets MCP callers inspect the
  * partial text and original transcription without treating it as success.
  */
-export class IncompleteRefinementError extends Error {
+export class IncompleteRefinementError extends DictationError {
   constructor(
     public readonly partialText: string,
-    public readonly transcription: string,
+    transcription: string,
     public readonly stopReason: Extract<StopReason, 'length' | 'aborted'>,
     public readonly sessionDir: string | undefined,
     public readonly copiedToClipboard: boolean,
@@ -77,8 +95,26 @@ export class IncompleteRefinementError extends Error {
           ? 'partial text was copied to the clipboard. '
           : 'partial text is available in the error result. ') +
         'The raw transcription is retained for retry.',
+      transcription,
     );
     this.name = 'IncompleteRefinementError';
+  }
+}
+
+/**
+ * Progressive typing left some, but not all, of the prompt in the target. The
+ * run is not a success: the text there is incomplete.
+ */
+export class PartialInsertionError extends DictationError {
+  constructor(
+    message: string,
+    transcription: string,
+    public readonly typedChars: number,
+    public readonly copiedToClipboard: boolean,
+    options?: { cause?: unknown },
+  ) {
+    super(message, transcription, options);
+    this.name = 'PartialInsertionError';
   }
 }
 
@@ -93,6 +129,11 @@ export interface ProcessPcmResult {
 
 export interface ProcessPcmOptions {
   inject?: boolean;
+  /**
+   * Copy the prompt to the clipboard instead of typing or pasting it. Used when
+   * an earlier attempt already left part of the dictation in the target.
+   */
+  clipboardOnly?: boolean;
   skillIds?: string[];
   /** Context snapshotted when the capture started (resolved after whisper runs). */
   context?: Promise<CapturedContext | null>;
@@ -168,6 +209,13 @@ export class Pipeline {
   private backgroundAudioTimeout: NodeJS.Timeout | null = null;
   private lastErrorSessionDir: string | null = null;
   private lastErrorAudioBuffer: ArrayBuffer | null = null;
+  /** Words of the dictation behind the current error, for "Insert raw". */
+  private lastErrorTranscription: string | null = null;
+  /**
+   * The latest insertion left part of a dictation in the target (typing stopped
+   * or the stream failed mid-way). Re-running it must not type over that text.
+   */
+  private partialInsertion = false;
   private headlessRecorder: AudioRecorder | null = null;
   private pendingHeadless: PendingHeadlessRecord | null = null;
   private recordStopTimer: NodeJS.Timeout | null = null;
@@ -215,10 +263,127 @@ export class Pipeline {
     );
   }
 
+  /** Copies `text` for the user to paste by hand; throws if that is not possible. */
+  private async copyForPaste(text: string): Promise<void> {
+    const copy = this.deps.copyToClipboard;
+    if (!copy) throw new Error('the clipboard is unavailable');
+    await copy(text);
+  }
+
+  private async tryCopy(text: string): Promise<boolean> {
+    try {
+      await this.copyForPaste(text);
+      return true;
+    } catch (err) {
+      console.warn('[pipeline] could not copy to clipboard:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Stops progressive typing and works out what a failed run should report.
+   * Typing is awaited first, so nothing lands in the target after the error is
+   * shown. If text already reached the target, the run is remembered as a
+   * partial insertion (so Retry / Refine last copy instead of typing it again)
+   * and the error says so.
+   */
+  private async failureAfterTyping(
+    err: unknown,
+    injector: ProgressiveInjector | null,
+    transcription: string | null,
+    timings: Record<string, number | string>,
+  ): Promise<unknown> {
+    const typing = injector ? await injector.abort() : null;
+    const partial = typing !== null && (typing.typed.length > 0 || typing.failed);
+    if (partial) {
+      this.partialInsertion = true;
+      timings.outcome = 'partial-insert';
+      timings.typedChars = typing.typed.length;
+    }
+    if (err instanceof DictationError) return err;
+    if (partial && transcription !== null) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return new PartialInsertionError(
+        `${reason}. ${typing.typed.length} characters were already typed into the target; ` +
+          'Retry will copy the prompt to the clipboard instead of typing it again.',
+        transcription,
+        typing.typed.length,
+        false,
+        { cause: err },
+      );
+    }
+    if (transcription !== null) {
+      return new DictationError(err instanceof Error ? err.message : String(err), transcription, {
+        cause: err,
+      });
+    }
+    return err;
+  }
+
+  /**
+   * Puts a finished prompt where the user will use it. Progressive typing that
+   * stopped early is an error, not a success: the target holds only part of the
+   * prompt, so the whole prompt goes to the clipboard.
+   */
+  private async deliverRefined(
+    refined: string,
+    how: { injector: ProgressiveInjector | null; clipboardOnly: boolean; inject: boolean },
+    transcription: string,
+    timings: Record<string, number | string>,
+  ): Promise<'inserted' | 'copied' | 'skipped'> {
+    const { cfg } = this.deps;
+    const start = Date.now();
+    if (how.clipboardOnly) {
+      this.setStatus('injecting');
+      await this.copyForPaste(refined);
+      timings.injectMs = Date.now() - start;
+      return 'copied';
+    }
+    if (how.injector) {
+      const typing = await how.injector.flush();
+      timings.injectMs = Date.now() - start;
+      if (typing.failed) {
+        const copied = await this.tryCopy(refined);
+        const typedChars = typing.typed.length;
+        throw new PartialInsertionError(
+          (typedChars > 0
+            ? `Typing stopped after ${typedChars} characters.`
+            : 'Typing stopped before any text reached the target.') +
+            (copied
+              ? ' The full prompt was copied to the clipboard; clear the partial text and paste it.'
+              : ' The prompt could not be copied to the clipboard, so use Retry.'),
+          transcription,
+          typedChars,
+          copied,
+          { cause: typing.error },
+        );
+      }
+      return 'inserted';
+    }
+    if (!how.inject) return 'skipped';
+    const injectFn = this.deps.inject;
+    if (!injectFn) throw new Error('inject is not configured');
+    this.setStatus('injecting');
+    await injectFn(refined, {
+      clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
+      clipboardRetention: cfg.clipboardRetention,
+      injectionMethod: cfg.injectionMethod,
+    });
+    timings.injectMs = Date.now() - start;
+    return 'inserted';
+  }
+
+  /** Tells the overlay about something that is not a failure (shown in the toast). */
+  private sendNotice(message: string, sessionDir: string): void {
+    const payload: ErrorPayload = { message, sessionDir, notice: true };
+    this.deps.getWindow?.()?.webContents.send(IPC_ERROR, payload);
+  }
+
   private sendError(err: unknown, sessionDir: string): void {
     const payload: ErrorPayload = {
       message: err instanceof Error ? err.message : String(err),
       sessionDir,
+      canInsertRaw: this.lastErrorTranscription !== null,
     };
     if (err instanceof IncompleteRefinementError) {
       payload.partialText = err.partialText;
@@ -251,6 +416,8 @@ export class Pipeline {
     this.lastTranscription = prev.lastTranscription;
     this.lastErrorSessionDir = prev.lastErrorSessionDir;
     this.lastErrorAudioBuffer = prev.lastErrorAudioBuffer;
+    this.lastErrorTranscription = prev.lastErrorTranscription;
+    this.partialInsertion = prev.partialInsertion;
     // Keep only the context the new settings and provider allow: what the user
     // switched off must not stay in memory, nor come back if it is re-enabled.
     this.lastContextDestination = prev.lastContextDestination;
@@ -294,6 +461,11 @@ export class Pipeline {
 
   hasLastTranscription(): boolean {
     return this.lastTranscription !== null;
+  }
+
+  /** The current error came from a dictation whose words can still be inserted. */
+  canInsertRaw(): boolean {
+    return this.lastErrorTranscription !== null && !this.isBusy();
   }
 
   isRecording(): boolean {
@@ -598,7 +770,10 @@ export class Pipeline {
     }
 
     const { cfg, provider } = this.deps;
-    const useProgressive = cfg.progressiveInjection && !!this.deps.createProgressiveInjector;
+    // Text from an earlier attempt may still sit in the target: copy, don't type.
+    const clipboardOnly = this.partialInsertion;
+    const useProgressive =
+      !clipboardOnly && cfg.progressiveInjection && !!this.deps.createProgressiveInjector;
     // Use the skills enabled *now*: the point of refine-last is re-running the
     // previous dictation after tweaking skills / the prompt in the panel. The
     // context is the one captured with that dictation, narrowed to what the
@@ -659,41 +834,34 @@ export class Pipeline {
 
       if (!refined) throw new Error(`${provider.config.displayName} returned empty refinement`);
 
-      if (injector) {
-        const iStart = Date.now();
-        await injector.flush();
-        timings.injectMs = Date.now() - iStart;
-      } else {
-        const injectFn = this.deps.inject;
-        if (injectFn) {
-          this.setStatus('injecting');
-          const iStart = Date.now();
-          await injectFn(refined, {
-            clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
-            clipboardRetention: cfg.clipboardRetention,
-            injectionMethod: cfg.injectionMethod,
-          });
-          timings.injectMs = Date.now() - iStart;
-        }
-      }
+      const delivered = await this.deliverRefined(
+        refined,
+        { injector, clipboardOnly, inject: !!this.deps.inject },
+        transcription,
+        timings,
+      );
+      if (delivered !== 'skipped') this.partialInsertion = false;
+      this.lastErrorTranscription = null;
 
       timings.totalMs = Date.now() - pipelineStart;
       session.writeTimings(timings);
       this.state = 'idle';
       this.setStatus('done');
+      if (delivered === 'copied') this.sendNotice(CLIPBOARD_ONLY_NOTICE, session.dir);
       this.scheduleIdle();
       return refined;
     } catch (err) {
-      if (injector) injector.abort();
+      const failure = await this.failureAfterTyping(err, injector, transcription, timings);
       console.error('[pipeline] refineLast error:', err);
-      session.writeError(err);
+      session.writeError(failure);
       timings.totalMs = Date.now() - pipelineStart;
       session.writeTimings(timings);
+      this.lastErrorTranscription = transcription;
       this.state = 'idle';
       this.setStatus('error');
-      this.sendError(err, session.dir);
+      this.sendError(failure, session.dir);
       this.scheduleIdle(2_500);
-      throw err;
+      throw failure;
     }
   }
 
@@ -704,14 +872,19 @@ export class Pipeline {
   ): Promise<ProcessPcmResult> {
     const { cfg, provider } = this.deps;
     const shouldInject = opts.inject ?? true;
+    const clipboardOnly = shouldInject && (opts.clipboardOnly ?? false);
     const useProgressive =
-      shouldInject && cfg.progressiveInjection && !!this.deps.createProgressiveInjector;
+      shouldInject &&
+      !clipboardOnly &&
+      cfg.progressiveInjection &&
+      !!this.deps.createProgressiveInjector;
     const canStreamWhisper = this.deps.whisperSupportsStreaming ?? true;
     const session = existingSession ?? createSession(cfg.logsDir, cfg.logMode);
     const timings: Record<string, number | string> = { provider: provider.config.id };
     const pipelineStart = Date.now();
     let transientWavPath: string | null = null;
     let injector: ProgressiveInjector | null = null;
+    let spoken: string | null = null;
 
     if (useProgressive) {
       injector = this.deps.createProgressiveInjector?.() ?? null;
@@ -761,11 +934,15 @@ export class Pipeline {
       );
 
       if (!transcription) throw new NoSpeechError();
+      spoken = transcription;
 
       // Context capture started with the recording and has been running in
       // parallel with whisper; it is almost always ready by now.
       const ctx = opts.context ? await opts.context : null;
       this.lastTranscription = transcription;
+      // A new dictation replaces the one whose partial text may sit in the
+      // target. A copy-only re-run of that dictation keeps the warning.
+      if (!clipboardOnly) this.partialInsertion = false;
       this.lastContext = ctx;
       this.lastContextDestination = destinationOf(provider);
 
@@ -810,33 +987,23 @@ export class Pipeline {
 
       if (!refined) throw new Error(`${provider.config.displayName} returned empty refinement`);
 
-      if (injector) {
-        const iStart = Date.now();
-        await injector.flush();
-        timings.injectMs = Date.now() - iStart;
-      } else if (shouldInject) {
-        const injectFn = this.deps.inject;
-        if (!injectFn) {
-          throw new Error('inject is not configured');
-        }
-        this.setStatus('injecting');
-        const iStart = Date.now();
-        await injectFn(refined, {
-          clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
-          clipboardRetention: cfg.clipboardRetention,
-          injectionMethod: cfg.injectionMethod,
-        });
-        timings.injectMs = Date.now() - iStart;
-      }
+      const delivered = await this.deliverRefined(
+        refined,
+        { injector, clipboardOnly, inject: shouldInject },
+        transcription,
+        timings,
+      );
+      if (delivered !== 'skipped') this.partialInsertion = false;
 
       timings.totalMs = Date.now() - pipelineStart;
       session.writeTimings(timings);
       console.log(`[pipeline] done: total=${timings.totalMs}ms`);
 
       this.setStatus('done');
+      if (delivered === 'copied') this.sendNotice(CLIPBOARD_ONLY_NOTICE, session.dir);
       return { text: refined, transcription, sessionDir: session.dir, stopReason };
     } catch (err) {
-      if (injector) injector.abort();
+      const typingFailure = await this.failureAfterTyping(err, injector, spoken, timings);
       if (cfg.logMode !== 'full' && transientWavPath) rmSync(transientWavPath, { force: true });
       timings.totalMs = Date.now() - pipelineStart;
       if (err instanceof NoSpeechError) {
@@ -846,10 +1013,10 @@ export class Pipeline {
         throw err;
       }
       console.error('[pipeline] error:', err);
-      session.writeError(err);
+      session.writeError(typingFailure);
       session.writeTimings(timings);
       this.setStatus('error');
-      throw err;
+      throw typingFailure;
     }
   }
 
@@ -857,13 +1024,15 @@ export class Pipeline {
     session: Session,
     buffer: ArrayBuffer,
     context: Promise<CapturedContext | null> = NO_CONTEXT,
+    clipboardOnly = false,
   ): Promise<void> {
     this.cancelIdle();
     this.state = 'processing';
 
     try {
-      await this.processPcm(buffer, { inject: true, context }, session);
+      await this.processPcm(buffer, { inject: true, context, clipboardOnly }, session);
       this.lastErrorSessionDir = null;
+      this.lastErrorTranscription = null;
       this.lastErrorAudioBuffer = null;
       this.lastErrorContext = NO_CONTEXT;
       this.state = 'idle';
@@ -878,6 +1047,7 @@ export class Pipeline {
         return;
       }
       this.lastErrorSessionDir = session.dir;
+      this.lastErrorTranscription = err instanceof DictationError ? err.transcription : null;
       this.lastErrorAudioBuffer = buffer.slice(0);
       this.lastErrorContextDestination = destinationOf(this.deps.provider);
       this.lastErrorContext = context;
@@ -1118,6 +1288,8 @@ export class Pipeline {
     if (this.state !== 'idle' || !this.lastErrorSessionDir) return;
     const sessionDir = this.lastErrorSessionDir;
     this.lastErrorSessionDir = null;
+    // Text from the failed attempt may still sit in the target: copy, don't type.
+    const clipboardOnly = this.partialInsertion;
 
     if (this.lastErrorAudioBuffer) {
       const buffer = this.lastErrorAudioBuffer;
@@ -1129,7 +1301,7 @@ export class Pipeline {
       this.lastErrorContext = NO_CONTEXT;
       const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
       this.state = 'processing';
-      await this.processBuffer(session, buffer, context);
+      await this.processBuffer(session, buffer, context, clipboardOnly);
       return;
     }
 
@@ -1150,6 +1322,62 @@ export class Pipeline {
 
     const session = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
     this.state = 'processing';
-    await this.processBuffer(session, ab);
+    await this.processBuffer(session, ab, NO_CONTEXT, clipboardOnly);
+  }
+
+  /**
+   * Insert the words the user actually spoke when refinement (or insertion of
+   * the refined text) failed. No provider call. When part of the dictation is
+   * already in the target, or insertion itself fails, the text goes to the
+   * clipboard instead.
+   */
+  async insertRaw(): Promise<void> {
+    const transcription = this.lastErrorTranscription;
+    if (transcription === null) throw new Error('no transcription to insert');
+    if (this.isBusy()) throw new Error('pipeline is busy');
+
+    const { cfg } = this.deps;
+    const sessionDir = this.lastErrorSessionDir ?? '';
+    const clipboardOnly = this.partialInsertion;
+    this.cancelIdle();
+    this.state = 'processing';
+    try {
+      if (clipboardOnly) {
+        await this.copyForPaste(transcription);
+      } else {
+        const injectFn = this.deps.inject;
+        if (!injectFn) throw new Error('inject is not configured');
+        this.setStatus('injecting');
+        try {
+          await injectFn(transcription, {
+            clipboardRestoreDelayMs: cfg.clipboardRestoreDelayMs,
+            clipboardRetention: cfg.clipboardRetention,
+            injectionMethod: cfg.injectionMethod,
+          });
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          const copied = await this.tryCopy(transcription);
+          throw new Error(
+            copied
+              ? `${reason}. The raw transcription was copied to the clipboard instead.`
+              : reason,
+            { cause: err },
+          );
+        }
+      }
+    } catch (err) {
+      console.error('[pipeline] insertRaw error:', err);
+      this.state = 'idle';
+      this.setStatus('error');
+      this.sendError(err, sessionDir);
+      this.scheduleIdle(2_500);
+      throw err;
+    }
+    this.lastErrorTranscription = null;
+    this.partialInsertion = false;
+    this.state = 'idle';
+    this.setStatus('done');
+    if (clipboardOnly) this.sendNotice(CLIPBOARD_ONLY_NOTICE, sessionDir);
+    this.scheduleIdle();
   }
 }

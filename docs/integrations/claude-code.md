@@ -74,6 +74,7 @@ Restart Claude Code after changing MCP configuration. Confirm the server appears
 - A recording lasts only as long as its caller: if the tool call is cancelled or times out, or the client disconnects, the microphone stops and the audio is discarded. A recording is also cut off after 5 minutes (the result then has `stoppedAtLimit: true`).
 - `inject` defaults to `false`. `murmur serve` rejects `inject: true` up front (before the microphone starts); paste injection is only available through the Electron overlay.
 - Optional `skill_ids` overrides which skills apply for that call.
+- If refinement fails after your speech was transcribed, the error result carries `structuredContent.transcription`, so an agent can use what was said instead of asking you to repeat it.
 
 Example prompt for Claude Code: *"Use murmur_record with duration_ms 8000 and return the refined prompt."*
 

@@ -12,7 +12,7 @@ import { updateConfigFile as defaultUpdateConfigFile } from '../config/file.js';
 import type { ResolvedConfig } from '../config/index.js';
 import { hasLoopbackHost, hasLoopbackOriginOrNone } from '../http-guard.js';
 import type { Pipeline, ProcessPcmResult } from '../pipeline.js';
-import { IncompleteRefinementError } from '../pipeline.js';
+import { DictationError, IncompleteRefinementError, PartialInsertionError } from '../pipeline.js';
 import { isValidSkillId, loadSkills } from '../skills.js';
 
 const PIPELINE_BUSY_MESSAGE = 'pipeline is busy (recording or processing)';
@@ -141,6 +141,17 @@ function toolError(err: unknown): ToolResult {
       structuredContent,
       isError: true,
     };
+  }
+  if (err instanceof DictationError) {
+    // The words were transcribed but a later step failed: hand them back so the
+    // caller does not have to ask the user to speak again.
+    const structuredContent: Record<string, unknown> = { transcription: err.transcription };
+    if (err instanceof PartialInsertionError) {
+      structuredContent.partialInsertion = true;
+      structuredContent.typedChars = err.typedChars;
+      structuredContent.copiedToClipboard = err.copiedToClipboard;
+    }
+    return { content: [{ type: 'text', text: message }], structuredContent, isError: true };
   }
   return { content: [{ type: 'text', text: message }], isError: true };
 }

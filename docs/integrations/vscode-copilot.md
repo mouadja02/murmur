@@ -72,6 +72,7 @@ Start the server from the MCP UI (play button above the entry in `mcp.json`) or 
 - A recording lasts only as long as its caller: if the tool call is cancelled or times out, or the client disconnects, the microphone stops and the audio is discarded. A recording is also cut off after 5 minutes (the result then has `stoppedAtLimit: true`).
 - `inject` defaults to `false`. `murmur serve` rejects `inject: true` up front (before the microphone starts); paste injection is only available through the Electron overlay.
 - Optional `skill_ids` overrides which skills apply for that call.
+- If refinement fails after your speech was transcribed, the error result carries `structuredContent.transcription`, so an agent can use what was said instead of asking you to repeat it.
 
 ## Troubleshooting
 

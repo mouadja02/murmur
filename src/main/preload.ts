@@ -8,6 +8,7 @@ import {
   IPC_ERROR,
   IPC_HIDE_OVERLAY,
   IPC_INFO,
+  IPC_INSERT_RAW,
   IPC_OPEN_CONTROL_PANEL,
   IPC_OPEN_LOG_DIR,
   IPC_QUEUE_DEPTH,
@@ -86,6 +87,9 @@ contextBridge.exposeInMainWorld('murmur', {
   },
   retry: () => {
     ipcRenderer.send(IPC_RETRY);
+  },
+  insertRaw: () => {
+    ipcRenderer.send(IPC_INSERT_RAW);
   },
   refineLast: () => {
     ipcRenderer.send(IPC_REFINE_LAST);

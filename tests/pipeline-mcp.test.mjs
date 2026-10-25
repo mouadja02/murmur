@@ -186,8 +186,8 @@ describe('Pipeline MCP / headless', () => {
       transcribeAudio: async () => ({ text: 'spoken request', stderr: '', durationMs: 1 }),
       createProgressiveInjector: () => ({
         pushToken: (token) => typed.push(token),
-        flush: async () => {},
-        abort: () => {},
+        flush: async () => ({ typed: 'partial output', failed: false }),
+        abort: async () => ({ typed: 'partial output', failed: false }),
       }),
       copyToClipboard: async (text) => clipboard.push(text),
     });
@@ -195,6 +195,47 @@ describe('Pipeline MCP / headless', () => {
     await assert.rejects(pipeline.processPcm(samplePcm()), { name: 'IncompleteRefinementError' });
     assert.deepEqual(typed, ['partial ', 'output']);
     assert.deepEqual(clipboard, ['partial output']);
+  });
+
+  it('returns the spoken words with a failure that happens after transcription', async () => {
+    const cfg = makeFakeConfig({ _baseDir: tempBase });
+    loadSkills(cfg.skillsDir);
+    const provider = makeFakeProvider([]);
+    const unreachable = new Error('Test unreachable');
+    provider.refineStream = async () => {
+      throw unreachable;
+    };
+    const pipeline = new Pipeline({
+      cfg,
+      provider,
+      transcribeAudio: async () => ({ text: 'spoken request', stderr: '', durationMs: 1 }),
+    });
+
+    await assert.rejects(pipeline.processPcm(samplePcm(), { inject: false }), (err) => {
+      assert.equal(err.name, 'DictationError');
+      assert.equal(err.message, 'Test unreachable');
+      assert.equal(err.transcription, 'spoken request');
+      assert.equal(err.cause, unreachable);
+      return true;
+    });
+  });
+
+  it('does not attach words to a failure before transcription', async () => {
+    const cfg = makeFakeConfig({ _baseDir: tempBase });
+    loadSkills(cfg.skillsDir);
+    const pipeline = new Pipeline({
+      cfg,
+      provider: makeFakeProvider([]),
+      transcribeAudio: async () => {
+        throw new Error('whisper crashed');
+      },
+    });
+
+    await assert.rejects(pipeline.processPcm(samplePcm(), { inject: false }), (err) => {
+      assert.equal(err.name, 'Error');
+      assert.equal(err.transcription, undefined);
+      return true;
+    });
   });
 
   it('leaves the clipboard alone for a truncated headless record or refine', async () => {
