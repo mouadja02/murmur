@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-label="Murmur: voice-first prompt engineering for coding agents">
+  <rect width="1280" height="360" fill="#f1f3f1"/>
+  <g stroke="#d4d9d6" stroke-width="1" fill="none" opacity="0.7"><path d="M0,60 H1280"/><path d="M0,120 H1280"/><path d="M0,180 H1280"/><path d="M0,240 H1280"/><path d="M0,300 H1280"/></g>
+
+  <g transform="translate(80,112) scale(3.125)">
+    <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" fill="#15181b" stroke="#15181b"/>
+  <path d="M5 24 V10 a1.5 1.5 0 0 1 2.7 -0.9 L13.5 17 a1 1 0 0 0 1.6 0 L17 14 a1 1 0 0 1 1.6 0 L20.5 17 a1 1 0 0 0 1.6 0 L24.3 9.1 A1.5 1.5 0 0 1 27 10 V24" fill="none" stroke="#f1f3f1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="16" cy="22" r="1.9" fill="#ffd93d"/>
+  </g>
+
+  <rect x="222" y="218" width="384" height="12" rx="3" fill="#ffe04d"/>
+  <text x="220" y="208" font-family="'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif" font-size="96" font-weight="700" fill="#15181b" textLength="388" lengthAdjust="spacingAndGlyphs">murmur</text>
+  <text x="222" y="270" font-family="'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif" font-size="22" font-weight="500" fill="#4b565f">Voice-first prompt engineering for coding agents.</text>
+  <text x="222" y="306" font-family="'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif" font-size="13" font-weight="600" fill="#4b565f" letter-spacing="1.6">LOCAL WHISPER  ·  YOUR OWN LLM  ·  PASTES AT YOUR CURSOR  ·  MCP READY</text>
+
+  <rect x="960" y="116" width="140" height="128" rx="16" fill="#ffe04d"/>
+  <g transform="translate(860,180)" stroke-width="3" stroke-linecap="round" fill="none">
+      <path d="M0,0 L20,0" stroke="#15181b"/>
+      <path d="M28,-14 L28,14" stroke="#15181b"/>
+      <path d="M44,-30 L44,30" stroke="#15181b"/>
+      <path d="M60,-46 L60,46" stroke="#15181b"/>
+      <path d="M76,-22 L76,22" stroke="#15181b"/>
+      <path d="M92,-6 L92,6" stroke="#15181b"/>
+      <path d="M108,-34 L108,34" stroke="#15181b"/>
+      <path d="M124,-50 L124,50" stroke="#15181b"/>
+      <path d="M140,-28 L140,28" stroke="#15181b"/>
+      <path d="M156,-12 L156,12" stroke="#15181b"/>
+      <path d="M172,-42 L172,42" stroke="#15181b"/>
+      <path d="M188,-58 L188,58" stroke="#15181b"/>
+      <path d="M204,-40 L204,40" stroke="#15181b"/>
+      <path d="M220,-18 L220,18" stroke="#15181b"/>
+      <path d="M236,-8 L236,8" stroke="#15181b"/>
+      <path d="M252,-24 L252,24" stroke="#15181b"/>
+      <path d="M268,-36 L268,36" stroke="#15181b"/>
+      <path d="M284,-16 L284,16" stroke="#15181b"/>
+      <path d="M300,-2 L300,2" stroke="#15181b"/>
+      <path d="M316,0 L336,0" stroke="#15181b"/>
+  </g>
+</svg>

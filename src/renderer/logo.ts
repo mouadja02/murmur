@@ -1,7 +1,7 @@
 /**
  * Stylised "M" mark with a subtle pulse dot evoking a microphone capsule.
- * Pure inline SVG, no external assets. Drawn in the overlay's ink and highlighter colours
- * (the repository's logo.svg keeps the original gradient for the README and package icon).
+ * Pure inline SVG, no external assets. Drawn in the overlay's ink and highlighter colours; the
+ * repository's logo.svg is the same mark on an ink tile for the README, package and window icon.
  */
 export const LOGO_SVG = `
 <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

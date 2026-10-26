@@ -9,13 +9,13 @@ const BANNER_LINES = [
   '╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝',
 ];
 
-const SLOGAN = 'voice-first prompt engineering for vibe coders';
+const SLOGAN = 'voice-first prompt engineering for coding agents';
 
 export function renderBanner(version = '0.0.0'): string {
   const out: string[] = [''];
-  for (const line of BANNER_LINES) out.push(`  ${pc.magenta(line)}`);
+  for (const line of BANNER_LINES) out.push(`  ${pc.yellow(line)}`);
   out.push('');
-  out.push(`  ${pc.dim('· ')}${pc.italic(pc.cyan(SLOGAN))}${pc.dim(' ·')}`);
+  out.push(`  ${pc.dim('· ')}${pc.italic(SLOGAN)}${pc.dim(' ·')}`);
   out.push(`  ${pc.dim(`v${version}`)}`);
   out.push('');
   return out.join('\n');
