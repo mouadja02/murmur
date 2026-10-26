@@ -4,6 +4,14 @@ All notable changes to Murmur. The format follows [Keep a Changelog](https://kee
 and the project follows [Semantic Versioning](https://semver.org/). Releases before 1.0.0 are
 listed on the [GitHub releases page](https://github.com/mouadja02/murmur/releases).
 
+## [Unreleased]
+
+### Fixed
+
+- OpenAI-compatible startup checks now allow 30 seconds for large model catalogs (such as
+  OpenRouter's) and report timeout, authentication and response-format errors with relevant advice.
+- Trailing slashes in OpenAI-compatible base URLs no longer produce double slashes in requests.
+
 ## [1.0.0] - 2026-10-26
 
 The first stable release: the overlay, control panel, MCP server and docs now match each other.

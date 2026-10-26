@@ -526,7 +526,16 @@ export async function startMcpServer(deps: StartMcpServerDeps): Promise<McpServe
       sendJson(res, 404, { error: 'not found' });
       return;
     }
-    await handleMcpHttpRequest(req, res, deps, cancellations);
+    try {
+      await handleMcpHttpRequest(req, res, deps, cancellations);
+    } catch (err) {
+      // A disconnected upload rejects the request body's async iterator.
+      // Never let that rejection escape the HTTP listener and kill Murmur.
+      if (res.destroyed) return;
+      console.error('[mcp] request failed:', err);
+      if (!res.headersSent) sendJson(res, 500, { error: 'internal error' });
+      else res.destroy();
+    }
   });
 
   const desiredPort = deps.cfg.mcpPort;

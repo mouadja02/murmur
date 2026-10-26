@@ -26,7 +26,10 @@ export function whisperThreadCount(logicalCores = os.availableParallelism()): nu
 // whisper.cpp annotates non-speech segments instead of returning nothing:
 // "[BLANK_AUDIO]", "[ Silence ]", "(upbeat music)", "(coughs)" … Strip them so
 // silence never reaches the LLM (which would happily "refine" the tag).
-const BRACKET_TAG_RE = /\[[^\]\n]*\]/g;
+// Only remove known annotations. Arbitrary brackets can be code or Markdown;
+// adjacent identifiers (playlist[music]) and link labels are meaningful too.
+const BRACKET_TAG_RE =
+  /(?<![\w$])\[\s*(?:[a-z ]*\s)?(?:silence|music|applause|laugh\w*|inaudible|noise|static|breath\w*|cough\w*|sigh\w*|blank_audio)\s*\](?!\()/gi;
 const PAREN_TAG_RE =
   /\((?:[a-z ]*\s)?(?:silence|music|applause|laugh\w*|inaudible|noise|static|breath\w*|cough\w*|sigh\w*|blank_audio)\)/gi;
 
