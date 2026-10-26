@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 import { AnthropicProvider } from '../dist/main/providers/anthropic.js';
 import { OllamaProvider } from '../dist/main/providers/ollama.js';
 import { OpenAiCompatProvider } from '../dist/main/providers/openai-compat.js';
-import { createThinkFilter, parseSseStream } from '../dist/main/providers/types.js';
+import { createThinkFilter, parseSseStream, stripThink } from '../dist/main/providers/types.js';
 
 const origFetch = globalThis.fetch;
 afterEach(() => {
@@ -63,6 +63,19 @@ describe('createThinkFilter', () => {
   });
 });
 
+describe('stripThink', () => {
+  it('drops unfinished reasoning from final and partial responses', () => {
+    assert.equal(stripThink('<think>internal reasoning'), '');
+    assert.equal(stripThink('Visible answer <think>internal reasoning'), 'Visible answer');
+    assert.equal(stripThink('<think>first</think>Answer<think>unfinished'), 'Answer');
+  });
+
+  it('preserves ordinary angle brackets and removes completed reasoning blocks', () => {
+    assert.equal(stripThink('Compare a < b and x <thing>.'), 'Compare a < b and x <thing>.');
+    assert.equal(stripThink('<think>reason</think>\nAnswer'), 'Answer');
+  });
+});
+
 describe('parseSseStream', () => {
   it('parses CRLF-delimited events and a final event without a blank line', async () => {
     const events = [];
@@ -75,6 +88,24 @@ describe('parseSseStream', () => {
 });
 
 describe('streaming providers', () => {
+  it('does not return unfinished reasoning that was hidden from streamed tokens', async () => {
+    const p = new OpenAiCompatProvider({ ...CFG, id: 'openai-compat', baseUrl: 'http://x/v1' });
+    const raw = 'Visible answer<think>internal reasoning';
+    serve([
+      `data: ${JSON.stringify({ choices: [{ delta: { content: raw }, finish_reason: 'length' }] })}\n\n`,
+      'data: [DONE]\n\n',
+    ]);
+    const tokens = [];
+    const result = await p.refineStream(REQ, { onToken: (token) => tokens.push(token) });
+    assert.equal(tokens.join(''), 'Visible answer');
+    assert.equal(result.text, 'Visible answer');
+    assert.equal(result.stopReason, 'length');
+
+    globalThis.fetch = async () =>
+      Response.json({ choices: [{ message: { content: raw }, finish_reason: 'stop' }] });
+    assert.equal((await p.refine(REQ)).text, 'Visible answer');
+  });
+
   it('openai-compat hides <think> from tokens and reports a normal stop', async () => {
     const delta = (content, finish_reason) =>
       `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason }] })}\n\n`;
