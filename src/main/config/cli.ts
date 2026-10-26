@@ -190,7 +190,7 @@ export function parseCli(argv: readonly string[]): CliResult {
 }
 
 export const HELP_TEXT = `
-Murmur — voice-first prompt engineering for vibe coders
+Murmur — voice-first prompt engineering for coding agents
 
 Usage:
   murmur [flags]

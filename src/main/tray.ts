@@ -65,10 +65,10 @@ function makeTrayIcon(r: number, g: number, b: number, alpha = 255): NativeImage
 
 // Colors mirror the overlay CSS variables.
 // Compute once at module load — avoids PNG synthesis + deflate on every setState call.
-const ICON_IDLE = makeTrayIcon(167, 139, 250); // --accent purple
+const ICON_IDLE = makeTrayIcon(255, 217, 61); // --accent highlighter yellow
 const ICON_RECORDING_BRIGHT = makeTrayIcon(248, 113, 113); // --recording red (full)
 const ICON_RECORDING_DIM = makeTrayIcon(248, 113, 113, 140); // --recording red (dimmed for pulse)
-const ICON_PROCESSING = makeTrayIcon(251, 191, 36); // --processing yellow
+const ICON_PROCESSING = makeTrayIcon(141, 187, 255); // --focus blue (idle is yellow, so amber would be ambiguous)
 const ICON_ERROR = makeTrayIcon(220, 38, 38); // error red (darker, distinct from recording)
 
 // Pulse animation frames: alternate between bright and dim recording icons.

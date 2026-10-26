@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 720" role="img" aria-label="Murmur architecture: capture, transcribe, refine, inject, with a control panel, skills, MCP server and session logs">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#15181b"/>
+    </marker>
+    <style>
+      .title  { font: 700 28px 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif; fill: #15181b; }
+      .label  { font: 600 15px 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif; fill: #15181b; }
+      .sub    { font: 400 12px 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif; fill: #4b565f; }
+      .hint   { font: 400 11px 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif; fill: #4b565f; }
+      .bullet { font: 400 11px 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif; fill: #4b565f; }
+      .stage  { font: 700 11px 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif; fill: #15181b; letter-spacing: 1.4px; }
+      .tag    { font: 600 10px 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif; fill: #4b565f; letter-spacing: 0.8px; }
+    </style>
+  </defs>
+
+  <rect width="1240" height="720" fill="#f1f3f1"/>
+
+  <text x="60" y="62" class="title">How a dictation flows</text>
+  <rect x="62" y="72" width="64" height="6" rx="3" fill="#ffe04d"/>
+  <text x="60" y="104" class="sub">Audio is transcribed on your machine. Only text goes to the LLM endpoint you configure.</text>
+
+  <g>
+    <text x="60" y="140" class="stage">1  CAPTURE</text>
+    <text x="355" y="140" class="stage">2  TRANSCRIBE</text>
+    <text x="650" y="140" class="stage">3  REFINE</text>
+    <text x="945" y="140" class="stage">4  INJECT</text>
+    <line x1="60" y1="150" x2="1180" y2="150" stroke="#d4d9d6" stroke-width="1"/>
+  </g>
+
+  <g transform="translate(60,180)">
+    <rect x="0" y="0" width="236" height="150" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <rect x="0" y="0" width="5" height="150" rx="2.5" fill="#ffe04d"/>
+    <text x="22" y="38" class="label">Microphone</text>
+    <text x="22" y="58" class="sub">16 kHz mono PCM, trimmed by VAD</text>
+    <text x="22" y="90" class="hint">Triggered by</text>
+    <text x="22" y="108" class="bullet">- click the overlay</text>
+    <text x="22" y="124" class="bullet">- hold or toggle Ctrl + Shift + Space</text>
+    <text x="22" y="140" class="bullet">- murmur_record from an MCP client</text>
+  </g>
+  <g transform="translate(355,180)">
+    <rect x="0" y="0" width="236" height="150" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <rect x="0" y="0" width="5" height="150" rx="2.5" fill="#ffe04d"/>
+    <text x="22" y="38" class="label">whisper.cpp</text>
+    <text x="22" y="58" class="sub">local, streams when supported</text>
+    
+    <text x="22" y="94" class="bullet">audio.wav -&gt; transcription</text>
+    <text x="22" y="110" class="bullet">ggml-base.en.bin (about 148 MB)</text>
+    <text x="22" y="126" class="bullet">no audio leaves the machine</text>
+  </g>
+  <g transform="translate(650,180)">
+    <rect x="0" y="0" width="236" height="150" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <rect x="0" y="0" width="5" height="150" rx="2.5" fill="#ffe04d"/>
+    <text x="22" y="38" class="label">Your LLM</text>
+    <text x="22" y="58" class="sub">Ollama / LM Studio / llama.cpp / cloud</text>
+    
+    <text x="22" y="94" class="bullet">system prompt + enabled skills</text>
+    <text x="22" y="110" class="bullet">+ optional app, clipboard, screen context</text>
+    <text x="22" y="126" class="bullet">-&gt; refined prompt, streamed</text>
+  </g>
+  <g transform="translate(945,180)">
+    <rect x="0" y="0" width="236" height="150" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <rect x="0" y="0" width="5" height="150" rx="2.5" fill="#ffe04d"/>
+    <text x="22" y="38" class="label">Your cursor</text>
+    <text x="22" y="58" class="sub">Cursor / VS Code / terminal / browser</text>
+    
+    <text x="22" y="94" class="bullet">focus guard, then paste shortcut</text>
+    <text x="22" y="110" class="bullet">or progressive typing as it streams</text>
+    <text x="22" y="126" class="bullet">Insert raw if refinement fails</text>
+  </g>
+
+  <path d="M305,255 L346,255" stroke="#15181b" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M600,255 L641,255" stroke="#15181b" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M895,255 L936,255" stroke="#15181b" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="325.5" y="243" class="tag" text-anchor="middle">WAV</text>
+  <text x="620.5" y="243" class="tag" text-anchor="middle">TEXT</text>
+  <text x="915.5" y="243" class="tag" text-anchor="middle">PROMPT</text>
+
+  <g transform="translate(60,400)">
+    <text x="0" y="-14" class="stage">AROUND THE PIPELINE    config in your user-data dir (config.json)</text>
+    <line x1="0" y1="-4" x2="1120" y2="-4" stroke="#d4d9d6"/>
+  </g>
+
+  <g transform="translate(60,420)">
+    <rect x="0" y="0" width="236" height="140" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <text x="20" y="34" class="label">Control panel</text>
+    <text x="20" y="54" class="sub">browser UI on localhost:7331</text>
+    <text x="20" y="88" class="bullet">- system prompt, skills, provider</text>
+    <text x="20" y="104" class="bullet">- hotkeys, context capture, paths</text>
+    <text x="20" y="120" class="bullet">- one save bar for everything</text>
+  </g>
+  <g transform="translate(355,420)">
+    <rect x="0" y="0" width="236" height="140" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <text x="20" y="34" class="label">Skills</text>
+    <text x="20" y="54" class="sub">markdown files in your user-data dir</text>
+    <text x="20" y="88" class="bullet">concise-output.md, code-context.md</text>
+    <text x="20" y="104" class="bullet">&amp; your own</text>
+    <text x="20" y="120" class="bullet">enabled skills join the system prompt</text>
+  </g>
+  <g transform="translate(650,420)">
+    <rect x="0" y="0" width="236" height="140" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <text x="20" y="34" class="label">MCP server</text>
+    <text x="20" y="54" class="sub">Streamable HTTP on localhost:7332</text>
+    <text x="20" y="88" class="bullet">murmur_record / murmur_stop_record</text>
+    <text x="20" y="104" class="bullet">murmur_transcribe / murmur_refine</text>
+    <text x="20" y="120" class="bullet">murmur serve runs it headless</text>
+  </g>
+  <g transform="translate(945,420)">
+    <rect x="0" y="0" width="236" height="140" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <text x="20" y="34" class="label">Terminal launch</text>
+    <text x="20" y="54" class="sub">banner, setup and status</text>
+    <text x="20" y="88" class="bullet">first-run LLM and whisper setup</text>
+    <text x="20" y="104" class="bullet">prints the control panel URL</text>
+    <text x="20" y="120" class="bullet">then starts the overlay</text>
+  </g>
+
+  <g transform="translate(60,600)">
+    <rect x="0" y="0" width="1120" height="80" rx="12" fill="#ffffff" stroke="#d4d9d6"/>
+    <text x="20" y="32" class="label">Session logs</text>
+    <text x="20" y="56" class="sub">metadata-only (default): timings.json and whisper-stderr.log, no content.  full: also audio.wav, transcription.txt, system-prompt.txt, context.txt, refined.txt and error.txt.</text>
+  </g>
+</svg>

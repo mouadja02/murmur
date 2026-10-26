@@ -153,39 +153,75 @@ describe('overlay design tokens', () => {
 
 describe('palette', () => {
   /** Purple and violet were rejected for the UI chrome; keep them out of every literal colour. */
+  const isPurple = ([r, g, b]) => {
+    const [R, G, B] = [r, g, b].map((c) => c / 255);
+    const max = Math.max(R, G, B);
+    const min = Math.min(R, G, B);
+    if (max === min) return false;
+    const sat = (max - min) / (1 - Math.abs(max + min - 1));
+    const d = max - min;
+    const hue =
+      60 * (max === R ? ((G - B) / d + 6) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4);
+    return sat > 0.2 && hue >= 255 && hue <= 330;
+  };
+
+  const purpleLiterals = (name, text) => {
+    const found = [];
+    for (const m of text.matchAll(/#([0-9a-f]{6})\b/gi))
+      if (isPurple(rgb(`#${m[1]}`))) found.push(`${name}: #${m[1]}`);
+    for (const m of text.matchAll(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/g))
+      if (isPurple([m[1], m[2], m[3]].map(Number)))
+        found.push(`${name}: rgb(${m[1]},${m[2]},${m[3]})`);
+    return found;
+  };
+
+  const repoFile = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+
   it('uses no purple or violet hue in the control panel, overlay or in-app logo', () => {
-    const offenders = [];
-    for (const [name, text] of [
-      ['control panel css', stripComments(panelCss)],
-      ['control panel html', panelHtml],
-      ['overlay', overlayHtml],
-      ['logo', logoJs],
-    ]) {
-      for (const m of text.matchAll(/#([0-9a-f]{6})\b/gi)) {
-        const [r, g, b] = rgb(`#${m[1]}`).map((c) => c / 255);
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        if (max === min) continue;
-        const sat = (max - min) / (1 - Math.abs(max + min - 1));
-        const d = max - min;
-        const hue =
-          60 * (max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4);
-        if (sat > 0.2 && hue >= 255 && hue <= 330) offenders.push(`${name}: #${m[1]}`);
-      }
-      for (const m of text.matchAll(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/g)) {
-        const [r, g, b] = [m[1], m[2], m[3]].map((c) => Number(c) / 255);
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        if (max === min) continue;
-        const sat = (max - min) / (1 - Math.abs(max + min - 1));
-        const d = max - min;
-        const hue =
-          60 * (max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4);
-        if (sat > 0.2 && hue >= 255 && hue <= 330)
-          offenders.push(`${name}: rgb(${m[1]},${m[2]},${m[3]})`);
-      }
-    }
+    const offenders = [
+      ...purpleLiterals('control panel css', stripComments(panelCss)),
+      ...purpleLiterals('control panel html', panelHtml),
+      ...purpleLiterals('overlay', overlayHtml),
+      ...purpleLiterals('logo', logoJs),
+    ];
     assert.deepEqual(offenders, []);
+  });
+
+  it('uses no purple or violet hue in the README assets, tray icon or terminal banner', () => {
+    const offenders = [];
+    for (const rel of [
+      'logo.svg',
+      'docs/banner-light.svg',
+      'docs/banner-dark.svg',
+      'docs/architecture-light.svg',
+      'docs/architecture-dark.svg',
+    ])
+      offenders.push(...purpleLiterals(rel, repoFile(rel)));
+
+    const tray = repoFile('dist/main/tray.js');
+    for (const m of tray.matchAll(/makeTrayIcon\((\d+),\s*(\d+),\s*(\d+)/g))
+      if (isPurple([m[1], m[2], m[3]].map(Number)))
+        offenders.push(`tray: rgb(${m[1]},${m[2]},${m[3]})`);
+
+    // picocolors names with a violet cast; the terminal banner draws in yellow.
+    if (/pc\.(magenta|bgMagenta|blue|bgBlue)\b/.test(repoFile('dist/main/cli/banner.js')))
+      offenders.push('terminal banner uses a magenta or blue colour');
+    assert.deepEqual(offenders, []);
+  });
+
+  it('ships every README asset in the package', () => {
+    const files = JSON.parse(repoFile('package.json')).files;
+    for (const rel of [
+      'logo.svg',
+      'docs/banner-light.svg',
+      'docs/banner-dark.svg',
+      'docs/architecture-light.svg',
+      'docs/architecture-dark.svg',
+    ])
+      assert.ok(files.includes(rel), `package.json files lists ${rel}`);
+    const readme = repoFile('README.md');
+    for (const m of readme.matchAll(/(?:src|srcset)="(docs\/[^"]+\.svg)"/g))
+      assert.ok(files.includes(m[1]), `README asset ${m[1]} is packaged`);
   });
 });
 

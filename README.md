@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="Murmur: Voice-first prompt engineering for vibe coders" width="100%"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg"/>
+    <img src="docs/banner-light.svg" alt="Murmur: voice-first prompt engineering for coding agents" width="100%"/>
+  </picture>
 </p>
 
 <p align="center">
@@ -173,7 +176,10 @@ sox --version
 ## How it works
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Murmur architecture diagram" width="100%"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg"/>
+    <img src="docs/architecture-light.svg" alt="Murmur architecture diagram" width="100%"/>
+  </picture>
 </p>
 
 Four stages, strictly local:

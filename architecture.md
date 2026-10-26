@@ -1,4 +1,4 @@
-# Murmur — Voice-First Prompt Engineering for Vibe Coders
+# Murmur — Voice-First Prompt Engineering for Coding Agents
 
 *Architecture, branding, and implementation blueprint*
 *Draft v0.1 — April 2026*
