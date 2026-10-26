@@ -109,15 +109,30 @@ class RequestBodyError extends Error {
   }
 }
 
+/**
+ * Past the limit the rest of the upload is read and thrown away rather than abandoned: leaving the
+ * loop destroys the socket mid-upload, and some clients then never see the 413. A body bigger than
+ * this is cut off for real.
+ */
+const MAX_DISCARDED_BODY_BYTES = 32 * 1024 * 1024;
+
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
+  let tooLarge = false;
   for await (const chunk of req) {
     const buf = chunk as Buffer;
     size += buf.length;
-    if (size > MAX_REQUEST_BODY_BYTES) throw new RequestBodyError(413, 'request body too large');
+    if (size > MAX_DISCARDED_BODY_BYTES) throw new RequestBodyError(413, 'request body too large');
+    if (tooLarge) continue;
+    if (size > MAX_REQUEST_BODY_BYTES) {
+      tooLarge = true;
+      chunks.length = 0;
+      continue;
+    }
     chunks.push(buf);
   }
+  if (tooLarge) throw new RequestBodyError(413, 'request body too large');
   if (chunks.length === 0) return {};
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw.trim()) return {};

@@ -55,6 +55,7 @@ describe('control panel request hardening', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Murmur-Token': token },
       body: JSON.stringify({ padding: 'x'.repeat(2 * 1024 * 1024) }),
+      signal: AbortSignal.timeout(10_000),
     });
     assert.equal(res.status, 413);
     assert.match((await res.json()).error, /too large/);
