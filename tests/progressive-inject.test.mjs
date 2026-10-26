@@ -25,7 +25,7 @@ describe('createProgressiveInjector', () => {
     });
     let callCount = 0;
     const injector = createProgressiveInjector({
-      typeFn: (text) => {
+      typeFn: (_text) => {
         callCount++;
         if (callCount === 2) {
           return gatePromise;

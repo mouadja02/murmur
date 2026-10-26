@@ -97,16 +97,34 @@ function sendSkillConflict(res: ServerResponse, err: unknown): boolean {
   return true;
 }
 
+/** Large enough for any skill file or prompt; anything bigger is a mistake or an attack. */
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+
+class RequestBodyError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    size += buf.length;
+    if (size > MAX_REQUEST_BODY_BYTES) throw new RequestBodyError(413, 'request body too large');
+    chunks.push(buf);
+  }
   if (chunks.length === 0) return {};
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw.trim()) return {};
   try {
     return JSON.parse(raw);
   } catch {
-    throw new Error('body is not valid JSON');
+    throw new RequestBodyError(400, 'body is not valid JSON');
   }
 }
 
@@ -518,7 +536,9 @@ function isStateChangingMethod(method: string): boolean {
 }
 
 function setSecurityHeaders(res: ServerResponse, csrfToken: string): void {
-  res.setHeader('Set-Cookie', `murmur_token=${csrfToken}; Path=/; SameSite=Strict`);
+  // Not used for auth (the page sends the token from /api/state as a header); HttpOnly keeps it
+  // out of reach of scripts on other localhost origins, which share cookies across ports.
+  res.setHeader('Set-Cookie', `murmur_token=${csrfToken}; Path=/; SameSite=Strict; HttpOnly`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
 }
 
@@ -558,7 +578,11 @@ export function startControlPanelServer(deps: ServerDeps): Promise<ServerHandle>
           try {
             body = await readBody(req);
           } catch (err) {
-            sendError(res, 400, (err as Error).message);
+            sendError(
+              res,
+              err instanceof RequestBodyError ? err.status : 400,
+              (err as Error).message,
+            );
             return;
           }
         }
