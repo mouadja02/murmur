@@ -8,9 +8,8 @@ import type {
 } from './types.js';
 import { createThinkFilter, normalizeStopReason, parseSseStream, stripThink } from './types.js';
 
-interface OpenAiModelsResponse {
-  data: { id: string }[];
-}
+// Cloud catalogs can be large; allow time for TLS setup and the full response body.
+const PREFLIGHT_TIMEOUT_MS = 30_000;
 
 interface OpenAiChatChoice {
   index: number;
@@ -45,6 +44,10 @@ interface OpenAiStreamDelta {
 export class OpenAiCompatProvider implements LlmProvider {
   constructor(public readonly config: ProviderConfig) {}
 
+  private get baseUrl(): string {
+    return this.config.baseUrl.replace(/\/+$/, '');
+  }
+
   private headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.config.apiKey) h.Authorization = `Bearer ${this.config.apiKey}`;
@@ -77,7 +80,7 @@ export class OpenAiCompatProvider implements LlmProvider {
       messages: this.messages(req),
     };
 
-    const res = await fetch(`${this.config.baseUrl}/chat/completions`, {
+    const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -112,7 +115,7 @@ export class OpenAiCompatProvider implements LlmProvider {
       messages: this.messages(req),
     };
 
-    const res = await fetch(`${this.config.baseUrl}/chat/completions`, {
+    const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -172,7 +175,7 @@ export class OpenAiCompatProvider implements LlmProvider {
   async prewarm(): Promise<number> {
     const started = Date.now();
     try {
-      await fetch(`${this.config.baseUrl}/chat/completions`, {
+      await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({
@@ -190,50 +193,75 @@ export class OpenAiCompatProvider implements LlmProvider {
   }
 
   async preflight(): Promise<string | null> {
-    if (!/\/v\d+\/?$/.test(this.config.baseUrl.replace(/\/$/, ''))) {
+    if (!/\/v\d+$/.test(this.baseUrl)) {
       return (
         `Base URL '${this.config.baseUrl}' does not end with a version segment like /v1. ` +
         `Most OpenAI-compatible servers require it — e.g. http://localhost:1234/v1`
       );
     }
 
-    let models: OpenAiModelsResponse;
+    const signal = AbortSignal.timeout(PREFLIGHT_TIMEOUT_MS);
+    let ids: string[];
     try {
-      const res = await fetch(`${this.config.baseUrl}/models`, {
+      const res = await fetch(`${this.baseUrl}/models`, {
         method: 'GET',
         headers: this.headers(),
-        signal: AbortSignal.timeout(3000),
+        signal,
       });
       if (!res.ok) {
+        await res.body?.cancel();
+        const hint =
+          res.status === 401 || res.status === 403
+            ? 'Check your API key (--api-key) and its permissions.'
+            : res.status === 429
+              ? 'The provider is rate limiting requests. Wait and try again.'
+              : 'Check --base-url and provider availability, then try again.';
         return (
           `${this.config.displayName} at ${this.config.baseUrl} responded ` +
-          `with HTTP ${res.status} on GET /models. Is the server running and ` +
-          `is the base URL correct? (LM Studio default: http://localhost:1234/v1)`
+          `with HTTP ${res.status} on GET /models. ${hint}`
         );
       }
       const raw = (await res.json()) as unknown;
-      if (Array.isArray(raw)) {
-        models = { data: raw as { id: string }[] };
-      } else if (
-        raw !== null &&
-        typeof raw === 'object' &&
-        Array.isArray((raw as Record<string, unknown>).data)
+      const models = raw !== null && typeof raw === 'object' && 'data' in raw ? raw.data : raw;
+      if (
+        !Array.isArray(models) ||
+        !models.every(
+          (model: unknown): model is { id: string } =>
+            model !== null &&
+            typeof model === 'object' &&
+            'id' in model &&
+            typeof model.id === 'string',
+        )
       ) {
-        models = raw as OpenAiModelsResponse;
-      } else {
-        return null;
+        return (
+          `${this.config.displayName} at ${this.config.baseUrl} returned an invalid model list ` +
+          'on GET /models. Expected an array of models with string IDs. Check --base-url.'
+        );
       }
+      ids = models.map((model) => model.id);
     } catch (err) {
+      // Reading the body can throw AbortError instead of the signal's TimeoutError.
+      if (signal.aborted) {
+        return (
+          `${this.config.displayName} preflight timed out after ${PREFLIGHT_TIMEOUT_MS / 1000} seconds ` +
+          `on GET /models at ${this.config.baseUrl}. ` +
+          'The model list may be slow to download. Check your connection and try again.'
+        );
+      }
+      if (err instanceof SyntaxError) {
+        return (
+          `${this.config.displayName} at ${this.config.baseUrl} returned invalid JSON ` +
+          'on GET /models. Check --base-url and provider availability.'
+        );
+      }
       return (
         `${this.config.displayName} not reachable at ${this.config.baseUrl} ` +
-        `(${(err as Error).message}). Check that the local server is running ` +
-        `and that --base-url matches.\n` +
-        `Tip: for LM Studio include the /v1 segment: http://<host>:1234/v1`
+        `(${err instanceof Error ? err.message : String(err)}). ` +
+        'Check your network connection, --base-url, and provider availability.'
       );
     }
 
     const wanted = this.config.model;
-    const ids = models.data.map((m) => m.id);
     const has = ids.some((id) => id === wanted || id.endsWith(`/${wanted}`));
     if (!has) {
       const sample = ids.slice(0, 5).join(', ');
