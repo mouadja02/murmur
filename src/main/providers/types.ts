@@ -74,7 +74,9 @@ export interface LlmProvider {
   prewarm?(): Promise<number>;
 }
 
-export const THINK_BLOCK = /<think>[\s\S]*?<\/think>/g;
+// Match through EOF when reasoning is cut off before its closing tag, just as
+// createThinkFilter does for streamed tokens.
+export const THINK_BLOCK = /<think>[\s\S]*?(?:<\/think>|$)/g;
 
 export function stripThink(text: string): string {
   return text.replace(THINK_BLOCK, '').trim();

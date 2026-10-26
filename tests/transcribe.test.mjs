@@ -31,4 +31,17 @@ describe('cleanTranscription', () => {
       'Call foo (the helper) twice.',
     );
   });
+
+  it('preserves bracketed code, placeholders, and Markdown links', () => {
+    const speech =
+      'Use items[0], dict["key"], playlist[music], [user_id], and [music](https://example.com).';
+    assert.equal(cleanTranscription(speech), speech);
+  });
+
+  it('removes known bracketed noise annotations while preserving code', () => {
+    assert.equal(
+      cleanTranscription('[ Silence ] Set items[0] to [user_id]. [applause]'),
+      'Set items[0] to [user_id].',
+    );
+  });
 });
