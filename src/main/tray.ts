@@ -149,7 +149,7 @@ export class TrayService {
         return;
       }
       this.pulseFrame = (this.pulseFrame + 1) % RECORDING_FRAMES.length;
-      this.tray.setImage(RECORDING_FRAMES[this.pulseFrame]!);
+      this.tray.setImage(RECORDING_FRAMES[this.pulseFrame] ?? ICON_RECORDING_BRIGHT);
     }, PULSE_INTERVAL_MS);
   }
 
