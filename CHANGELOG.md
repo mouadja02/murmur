@@ -4,7 +4,7 @@ All notable changes to Murmur. The format follows [Keep a Changelog](https://kee
 and the project follows [Semantic Versioning](https://semver.org/). Releases before 1.0.0 are
 listed on the [GitHub releases page](https://github.com/mouadja02/murmur/releases).
 
-## [1.0.0] - unreleased
+## [1.0.0] - 2026-10-26
 
 The first stable release: the overlay, control panel, MCP server and docs now match each other.
 Config keys, CLI flags, environment variables, the `murmur://` URL scheme and the MCP tool names

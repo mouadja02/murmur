@@ -29,7 +29,7 @@ Your voice is transcribed **on your own machine** with `whisper.cpp`, then rewri
 
 The default system prompt is written for fidelity. It removes fillers and dictation artifacts, keeps identifiers, negations and uncertainty as you said them, and is told not to invent requirements, constraints or output formats ([`src/main/config/defaults.ts`](src/main/config/defaults.ts)).
 
-> **Placeholder: a real before → after pair goes here before the 1.0.0 tag.** It has to be a capture, not an invented example (tracked in [#45](https://github.com/mouadja02/murmur/issues/45)). To make one: set **Paths → Session logging** to `full`, dictate a realistic prompt, then copy `transcription.txt` (before) and `refined.txt` (after) from the newest folder under your logs directory.
+> **Placeholder: a real before → after pair goes here.** It has to be a capture, not an invented example (tracked in [#45](https://github.com/mouadja02/murmur/issues/45)). To make one: set **Paths → Session logging** to `full`, dictate a realistic prompt, then copy `transcription.txt` (before) and `refined.txt` (after) from the newest folder under your logs directory.
 >
 > | | |
 > | --- | --- |
