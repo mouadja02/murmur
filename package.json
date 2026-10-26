@@ -1,6 +1,6 @@
 {
   "name": "@mouadja02/murmur",
-  "version": "0.7.2",
+  "version": "1.0.0",
   "description": "Voice-first prompt engineering for coding agents. Floating overlay that turns your voice into clean, structured prompts using local Whisper + your own local LLM.",
   "private": false,
   "type": "module",
@@ -21,6 +21,8 @@
     "docs/integrations/",
     "logo.svg",
     "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "scripts": {
