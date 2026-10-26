@@ -4,13 +4,23 @@ All notable changes to Murmur. The format follows [Keep a Changelog](https://kee
 and the project follows [Semantic Versioning](https://semver.org/). Releases before 1.0.0 are
 listed on the [GitHub releases page](https://github.com/mouadja02/murmur/releases).
 
-## [Unreleased]
+## [1.0.1] - 2026-10-26
 
 ### Fixed
 
 - OpenAI-compatible startup checks now allow 30 seconds for large model catalogs (such as
   OpenRouter's) and report timeout, authentication and response-format errors with relevant advice.
 - Trailing slashes in OpenAI-compatible base URLs no longer produce double slashes in requests.
+- Interrupted MCP uploads no longer terminate Murmur with an unhandled connection error.
+- Transcription cleanup preserves bracketed code, placeholders and Markdown links while still
+  removing recognized non-speech annotations.
+- Unfinished `<think>` blocks are removed from final and partial provider responses, matching
+  the filtering already applied to streamed tokens.
+
+### Changed
+
+- Updated Electron to 45.0.0, dotenv to 18.0.9 and Biome to 2.6.2. Biome's new Markdown and YAML
+  formatters are disabled to preserve the repository's existing formatting scope.
 
 ## [1.0.0] - 2026-10-26
 
