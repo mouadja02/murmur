@@ -16,10 +16,10 @@ importers:
         version: 4.2.6(debug@4.4.3)
       dotenv:
         specifier: ^18.0.8
-        version: 18.0.8
+        version: 18.0.9
       electron:
-        specifier: ^44.8.0
-        version: 44.8.0
+        specifier: ^45.0.0
+        version: 45.0.0
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -593,8 +593,8 @@ packages:
   dom-walk@0.1.2:
     resolution: {integrity: sha512-6QvTW9mrGeIegrFXdtQi9pk7O/nSK6lSdXW2eqUspN5LWD7UTji2Fqw5V2YLjBpHEoU9Xl/eUWNpDeZvoyOv2w==}
 
-  dotenv@18.0.8:
-    resolution: {integrity: sha512-2KDeoFoK/zRtcnbunCDlLG5VWVMcyqeQc6iK65o231nfNAcuGrKoqUQfJFUtBI+QlShk5HKIHxwebBtUl3rEfA==}
+  dotenv@18.0.9:
+    resolution: {integrity: sha512-3fVOW4cB02R066PUSwn8O4TJyz9NckQl7F81blIbaq9jKBm2tSmOKky7ZHIXzGvkVPXCSn6jkpziBPZdGFs8Tw==}
     engines: {node: '>=12'}
     hasBin: true
 
@@ -605,8 +605,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  electron@44.8.0:
-    resolution: {integrity: sha512-Yn2tJ335l8MGRJj86vaAYq1MOidtiw9eXdmHX6p3ecHQWwucsMMBxDzqUrYnXEHyqdc/IhOh2KGHzmizJvzd3Q==}
+  electron@45.0.0:
+    resolution: {integrity: sha512-yjz4uhMBcO6L5X7CWgRMobf2EMJPnb9j4zuf+nu/TU/6E4Sqfx7fn/a2eACo4qngjml/0JnsoZhxYroJLxLd2w==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -1754,7 +1754,7 @@ snapshots:
 
   dom-walk@0.1.2: {}
 
-  dotenv@18.0.8: {}
+  dotenv@18.0.9: {}
 
   dunder-proto@1.0.1:
     dependencies:
@@ -1764,7 +1764,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  electron@44.8.0:
+  electron@45.0.0:
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0
