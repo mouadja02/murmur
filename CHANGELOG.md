@@ -4,6 +4,19 @@ All notable changes to Murmur. The format follows [Keep a Changelog](https://kee
 and the project follows [Semantic Versioning](https://semver.org/). Releases before 1.0.0 are
 listed on the [GitHub releases page](https://github.com/mouadja02/murmur/releases).
 
+## [Unreleased]
+
+### Fixed
+
+- Holding the push-to-talk hotkey while a dictation is still being processed now queues the next
+  dictation, as the README describes, instead of silently dropping what you said. Releasing the key
+  ends the queued capture; it was previously ignored in the default `hold` mode.
+- A capture started (by clicking the pill or pressing a toggle-mode hotkey) while **Refine last** or
+  **Insert raw** was running is now taken over when that finishes. Before, the microphone stayed
+  open while the overlay showed idle, a capture that was also stopped in that window was never
+  processed, and the pipeline reported busy (blocking config reloads and MCP calls) until the
+  next click.
+
 ## [1.0.1] - 2026-10-26
 
 ### Fixed

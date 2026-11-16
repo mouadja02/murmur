@@ -206,7 +206,7 @@ Four stages. Audio is transcribed on your machine; only text goes to the LLM end
 | **Refine** | Your LLM rewrites the transcription into a concise prompt using your active system prompt + enabled skills (+ the optional context you opted into). Tokens stream from the provider, which is what makes progressive injection possible. |
 | **Inject** | Murmur copies the refined text, fires `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) at your current cursor, and keeps the generated prompt on your clipboard by default. With **Progressive injection** it types the tokens as they arrive instead. |
 
-Click or hotkey again while a dictation is still being processed and the next one is queued (up to `queueMaxDepth`, default 3). With `prewarm` on (the default) Murmur asks the provider to load the model at startup so the first dictation is less likely to hit a cold start. A model that sits idle longer than the provider's keep-alive can still cold-start.
+Click or use the hotkey again (hold it again, in the default mode) while a dictation is still being processed, or while **Refine last** or **Insert raw** is running, and the next one is queued (up to `queueMaxDepth`, default 3). The capture you started keeps recording and becomes the live one as soon as the earlier work ends. With `prewarm` on (the default) Murmur asks the provider to load the model at startup so the first dictation is less likely to hit a cold start. A model that sits idle longer than the provider's keep-alive can still cold-start.
 
 **When a step fails after your words were transcribed**, the error toast offers **Retry** and **Insert raw**, which inserts exactly what you said, with no provider call. If inserting fails too, the text goes to the clipboard instead. The right-click menu has the same **Insert raw transcription** item. A failed `murmur_record` MCP call returns the transcription in `structuredContent` as well.
 
@@ -382,7 +382,7 @@ pnpm dev --provider openai-compat --base-url https://api.groq.com/openai/v1 --mo
 | Action | Behaviour |
 | --- | --- |
 | **Click** the pill | Toggles recording (start / stop) |
-| **Hold** `Ctrl+Shift+Space` | Push-to-talk: records while held, processes on release |
+| **Hold** `Ctrl+Shift+Space` | Push-to-talk: records while held, processes on release. Holding it while a dictation is still processing queues the next one, like clicking the pill |
 | **Press** `Ctrl+Shift+Space` (`hotkeyMode: "toggle"`) | Starts recording; the next press stops it. A pause in your speech does not stop it, unlike click-to-record. Pressing while a dictation is still processing queues the next one, like clicking the pill |
 | **Tap** `Ctrl+Shift+H` | Show / hide the overlay from anywhere |
 | **Drag** the pill | Moves it; the new position survives restart |
