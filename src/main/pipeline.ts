@@ -665,6 +665,16 @@ export class Pipeline {
       console.warn('[pipeline] start ignored: headless recording active');
       return;
     }
+    if (this.state === 'processing') {
+      // A dictation (or Refine last / Insert raw) is still running. Queue this
+      // capture behind it, as a click does, instead of dropping the speech.
+      if (this.backgroundSession === null) {
+        this.beginBackgroundCapture(mode);
+      } else {
+        console.warn('[pipeline] start ignored: a queued capture is already recording');
+      }
+      return;
+    }
     if (this.state !== 'idle') {
       console.warn(`[pipeline] start ignored: state=${this.state}`);
       return;
@@ -703,6 +713,11 @@ export class Pipeline {
       console.warn('[pipeline] stop ignored: headless recording active');
       return;
     }
+    if (this.state === 'processing' && this.backgroundSession !== null) {
+      // The capture queued behind the work in flight ends, like a second click.
+      this.stopBackgroundCapture();
+      return;
+    }
     if (this.state !== 'recording') {
       console.warn(`[pipeline] stop ignored: state=${this.state}`);
       return;
@@ -728,14 +743,24 @@ export class Pipeline {
       this.stop();
     } else if (this.state === 'processing') {
       if (this.backgroundSession === null) {
-        this.backgroundSession = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
-        this.backgroundContext = this.beginContext();
-        this.backgroundTarget = this.beginTarget();
-        this.requestRendererStart(mode === 'toggle');
+        this.beginBackgroundCapture(mode);
       } else {
         this.stopBackgroundCapture();
       }
     }
+  }
+
+  /**
+   * Open a capture behind the work in flight (a dictation being processed,
+   * Refine last or Insert raw). The microphone is open from here on;
+   * {@link continueWithNextCapture} makes it the live recording once that work
+   * ends, so every path that leaves `processing` must call it.
+   */
+  private beginBackgroundCapture(mode: CaptureMode): void {
+    this.backgroundSession = createSession(this.deps.cfg.logsDir, this.deps.cfg.logMode);
+    this.backgroundContext = this.beginContext();
+    this.backgroundTarget = this.beginTarget();
+    this.requestRendererStart(mode === 'toggle');
   }
 
   /**
@@ -933,7 +958,9 @@ export class Pipeline {
       this.state = 'idle';
       this.setStatus('done');
       if (delivered === 'copied') this.sendNotice(CLIPBOARD_ONLY_NOTICE, session.dir);
-      this.scheduleIdle();
+      // A capture started while this ran is open already: take it over rather
+      // than going idle with the microphone still recording.
+      if (!this.continueWithNextCapture()) this.scheduleIdle();
       return refined;
     } catch (err) {
       const failure = await this.failureAfterTyping(err, injector, transcription, timings);
@@ -945,7 +972,7 @@ export class Pipeline {
       this.state = 'idle';
       this.setStatus('error');
       this.sendError(failure, session.dir);
-      this.scheduleIdle(2_500);
+      if (!this.continueWithNextCapture()) this.scheduleIdle(2_500);
       throw failure;
     }
   }
@@ -1153,12 +1180,12 @@ export class Pipeline {
   }
 
   /**
-   * After a capture finishes processing: run the next queued capture, or — if
-   * the user started a new capture while this one was processing and it is
-   * still going — make that the live recording. Returns false when there is
-   * nothing left to do. Before this, a capture that outlived the processing it
-   * was queued behind had its audio dropped ("audio chunk without active
-   * session") and left the pipeline looking busy forever.
+   * After a capture finishes processing — or Refine last / Insert raw ends —
+   * run the next queued capture, or, if the user started a new capture while
+   * that work was running and it is still going, make it the live recording.
+   * Returns false when there is nothing left to do. Without this, a capture
+   * that outlived the work it was queued behind had its audio dropped ("audio
+   * chunk without active session") and left the pipeline looking busy forever.
    */
   private continueWithNextCapture(): boolean {
     if (this.audioQueue.length > 0) {
@@ -1472,7 +1499,7 @@ export class Pipeline {
       this.state = 'idle';
       this.setStatus('error');
       this.sendError(err, sessionDir);
-      this.scheduleIdle(2_500);
+      if (!this.continueWithNextCapture()) this.scheduleIdle(2_500);
       throw err;
     }
     this.lastErrorTranscription = null;
@@ -1480,6 +1507,6 @@ export class Pipeline {
     this.state = 'idle';
     this.setStatus('done');
     if (clipboardOnly) this.sendNotice(CLIPBOARD_ONLY_NOTICE, sessionDir);
-    this.scheduleIdle();
+    if (!this.continueWithNextCapture()) this.scheduleIdle();
   }
 }

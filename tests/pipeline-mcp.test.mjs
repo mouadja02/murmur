@@ -694,17 +694,18 @@ describe('Pipeline overlay path', () => {
     assert.equal(transcribed, false);
   });
 
-  it('refineLast uses the currently enabled skills and blocks new captures', async () => {
+  it('refineLast uses the currently enabled skills and keeps a press made meanwhile queued behind it', async () => {
     const cfg = makeFakeConfig({ _baseDir: tempBase, enabledSkills: [] });
     loadSkills(cfg.skillsDir);
     const refinements = [];
     let release;
+    let rendererStarts = 0;
     const provider = makeFakeProvider(refinements);
     const pipeline = new Pipeline({
       cfg,
       provider,
       requestRendererStart: () => {
-        throw new Error('capture must not start while refine-last runs');
+        rendererStarts++;
       },
       transcribeAudio: async () => ({ text: 'first take', stderr: '', durationMs: 1 }),
       inject: async () => {},
@@ -726,10 +727,22 @@ describe('Pipeline overlay path', () => {
     await Promise.resolve();
 
     assert.equal(pipeline.isBusy(), true);
-    pipeline.start(); // ignored while busy
+    // A hold-to-talk press while refine-last runs is queued behind it, as it is
+    // behind a dictation being processed. It must not become the live recording
+    // (refine-last would then end by resetting the state of a capture in
+    // progress), so the pipeline stays busy until refine-last is done.
+    pipeline.start();
+    assert.equal(rendererStarts, 1, 'the press opened a capture queued behind refine-last');
+    assert.equal(pipeline.isRecording(), false);
+    assert.equal(pipeline.isBusy(), true);
     release();
     assert.equal(await pending, 'AGAIN: first take');
     assert.match(refinements.at(-1).systemPrompt, /### Concise output/);
+
+    // Refine-last is done: the open capture takes over rather than being orphaned.
+    assert.equal(pipeline.isRecording(), true);
+    pipeline.stop();
+    await pipeline.handleAudioChunk(samplePcm());
     assert.equal(pipeline.isIdle(), true);
   });
 
