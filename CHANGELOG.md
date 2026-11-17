@@ -16,6 +16,14 @@ listed on the [GitHub releases page](https://github.com/mouadja02/murmur/release
   open while the overlay showed idle, a capture that was also stopped in that window was never
   processed, and the pipeline reported busy (blocking config reloads and MCP calls) until the
   next click.
+- A quoted Windows recorder path such as `"C:\Program Files (x86)\sox-14-4-2\sox.exe"` (in
+  `--recorder-command`, `MURMUR_RECORDER_COMMAND` or `recorderCommand`) keeps its backslashes
+  instead of becoming `C:Program Files (x86)sox-14-4-2sox.exe`. Inside quotes, a backslash now
+  only escapes the quote character, following the Windows argument rules.
+- `murmur_record` with a recorder that is not installed (for example SoX missing when the agent
+  uses the overlay app's MCP endpoint) now names the missing command and how to fix it, instead of
+  `spawn sox ENOENT`. The overlay app warns about a missing recorder at startup, and the README
+  and integration guides say that its `murmur_record` needs the recorder too.
 
 ## [1.0.1] - 2026-10-26
 

@@ -12,7 +12,9 @@ Connect Claude Code to a local Murmur MCP server so the agent can record voice, 
   - **Windows / macOS:** [SoX](http://sox.sourceforge.net/) (`sox` on `PATH`)
   - **Linux:** ALSA utils (`arecord` on `PATH`)
 
-Override the recorder with `--recorder-command` or `MURMUR_RECORDER_COMMAND` if your binary lives elsewhere.
+Override the recorder with `--recorder-command` or `MURMUR_RECORDER_COMMAND` if your binary lives elsewhere (quote a path that contains spaces; backslashes are kept).
+
+The recorder is also needed when you point the agent at the **overlay app's** MCP endpoint (`mcpPort`, default 7332) instead of `murmur serve`: its `murmur_record` uses the same command, not the overlay mic. `murmur_transcribe` and `murmur_refine` need no recorder.
 
 ## Start Murmur
 
@@ -83,7 +85,7 @@ Example prompt for Claude Code: *"Use murmur_record with duration_ms 8000 and re
 | Symptom | Fix |
 | --- | --- |
 | MCP connection refused | Ensure `murmur serve` is running and port `7332` is free |
-| `headless recorder command not found: sox` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `--recorder-command` |
+| `headless recorder command not found: sox` at startup, or `recorder command not found: sox` from `murmur_record` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `--recorder-command` |
 | Whisper / model errors | Run `murmur setup:whisper` or fix paths in the control panel |
 | LLM errors | Start Ollama (`ollama serve`) or your configured provider |
 | `pipeline is busy` | Wait for the current recording/processing to finish. If an agent left a recording open, call `murmur_stop_record` |

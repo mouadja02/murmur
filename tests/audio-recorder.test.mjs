@@ -145,6 +145,44 @@ describe('CommandAudioRecorder', () => {
     assert.equal(attempts, 2);
   });
 
+  // #78: the overlay's MCP endpoint spawns this recorder without a preflight
+  // check, so a missing SoX used to surface as a bare "spawn sox ENOENT".
+  it('names a missing recorder command and how to fix it (real spawn)', async () => {
+    const missing = 'murmur-test-no-such-recorder-7f3c';
+    const recorder = new CommandAudioRecorder({ commandLine: `${missing} -q -t raw -` });
+
+    await assert.rejects(
+      () => recorder.start(),
+      (err) => {
+        assert.match(err.message, new RegExp(`recorder command not found: ${missing}\\b`));
+        assert.match(err.message, /install SoX/);
+        assert.match(err.message, /--recorder-command/);
+        assert.match(err.message, /MURMUR_RECORDER_COMMAND/);
+        assert.match(err.message, /recorderCommand/);
+        assert.equal(err.code, 'ENOENT');
+        assert.equal(err.cause?.code, 'ENOENT');
+        return true;
+      },
+    );
+  });
+
+  it('passes other spawn errors through unchanged', async () => {
+    const original = Object.assign(new Error('spawn recorder EACCES'), { code: 'EACCES' });
+    const recorder = new CommandAudioRecorder({
+      commandLine: 'recorder --raw',
+      spawnFn: () => {
+        const child = fakeChild();
+        queueMicrotask(() => child.emit('error', original));
+        return child;
+      },
+    });
+
+    await assert.rejects(
+      () => recorder.start(),
+      (err) => err === original,
+    );
+  });
+
   it('rejects concurrent start calls', async () => {
     const child = fakeChild();
     const recorder = new CommandAudioRecorder({

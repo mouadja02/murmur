@@ -138,21 +138,27 @@ murmur serve --port 7331 --mcp-port 7332
 | Control panel | `http://127.0.0.1:7331` |
 | MCP (Streamable HTTP) | `http://127.0.0.1:7332/mcp` |
 
-**Headless recording** uses a local command, not the Electron overlay mic:
+**Headless recording** (the MCP `murmur_record` tool) uses a local command, not the Electron overlay mic. That holds for `murmur serve` and for the MCP endpoint the overlay app serves; overlay dictation, `murmur_transcribe` and `murmur_refine` do not need it:
 
 - **Windows / macOS:** [SoX](http://sox.sourceforge.net/) (`sox` on `PATH`)
 - **Linux:** ALSA utils (`arecord` on `PATH`)
 
 Override with `--recorder-command` or `MURMUR_RECORDER_COMMAND` if needed.
 
-If startup fails with `headless recorder command not found: sox`, install SoX and restart your terminal:
+If `murmur serve` fails at startup with `headless recorder command not found: sox`, or `murmur_record` returns `recorder command not found: sox` (the overlay app only prints a startup warning), install SoX and restart your terminal:
 
 ```powershell
 winget install --id ChrisBagwell.SoX -e
 sox --version
 ```
 
-If `sox --version` still fails, add the SoX install folder to `PATH` or pass the full executable path with `--recorder-command`.
+If `sox --version` still fails, add the SoX install folder to `PATH` or give the full executable path in the recorder command. Quote a path that contains spaces; its backslashes are kept:
+
+```powershell
+$env:MURMUR_RECORDER_COMMAND = '"C:\Program Files (x86)\sox-14-4-2\sox.exe" -q -d -r 16000 -c 1 -b 16 -e signed-integer -t raw -'
+```
+
+In `config.json`, JSON doubles the backslashes: `"recorderCommand": "\"C:\\Program Files (x86)\\sox-14-4-2\\sox.exe\" -q -d -r 16000 -c 1 -b 16 -e signed-integer -t raw -"`.
 
 If `winget` says SoX is already installed but `sox --version` still fails, the portable install may be incomplete or not linked into `PATH`. Remove and reinstall it, then verify again:
 
@@ -236,7 +242,7 @@ Every session gets a timestamped folder in your logs directory. By default (`met
 - **Provider agnostic** — Ollama native API, any OpenAI-compatible server (LM Studio, llama.cpp server, vLLM, Jan, KoboldCpp, oobabooga, …), and Anthropic Claude.
 - **Local by default** — no telemetry. While running, the only outbound call is to the LLM endpoint you configured (plus a skill import from a URL you paste). Setup downloads `whisper.cpp` and its model once.
 - **Session logs** — every run writes a folder with `timings.json` (and, in `full` mode, audio, transcription, prompts and refined text) for traceability.
-- **MCP server mode** — `murmur serve` exposes Streamable HTTP tools (`murmur_record`, `murmur_stop_record`, `murmur_transcribe`, `murmur_refine`) for IDE agents without launching Electron. The overlay app serves the same MCP endpoint on `mcpPort`.
+- **MCP server mode** — `murmur serve` exposes Streamable HTTP tools (`murmur_record`, `murmur_stop_record`, `murmur_transcribe`, `murmur_refine`) for IDE agents without launching Electron. The overlay app serves the same MCP endpoint on `mcpPort`; its `murmur_record` also records through the headless recorder command (SoX or `arecord`), not the overlay mic.
 
 ---
 

@@ -1,5 +1,5 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { splitCommandLine } from './command.js';
+import { recorderNotFoundMessage, splitCommandLine } from './command.js';
 
 export interface AudioRecorder {
   start(): Promise<void>;
@@ -28,6 +28,19 @@ export interface CommandAudioRecorderOptions {
 /** Windows: default kill(); Unix: SIGINT for recorder processes. */
 export function getRecorderStopSignal(): NodeJS.Signals | undefined {
   return process.platform === 'win32' ? undefined : 'SIGINT';
+}
+
+/**
+ * A recorder that is not installed fails to spawn with ENOENT, whose message
+ * ("spawn sox ENOENT") says neither what is missing nor how to fix it. The
+ * overlay's MCP endpoint reaches this without the preflight `murmur serve` runs.
+ */
+function describeSpawnError(err: Error, cmd: string): Error {
+  if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return err;
+  const described = new Error(`${recorderNotFoundMessage(cmd)}\n  (${err.message})`, {
+    cause: err,
+  });
+  return Object.assign(described, { code: 'ENOENT' });
 }
 
 export function formatRecorderExitCode(code: number | null): string {
@@ -86,7 +99,7 @@ export class CommandAudioRecorder implements AudioRecorder {
       const onError = (err: Error) => {
         child.removeListener('spawn', onSpawn);
         this.resetAfterChildEnd();
-        reject(err);
+        reject(describeSpawnError(err, cmd));
       };
       child.once('spawn', onSpawn);
       child.once('error', onError);
