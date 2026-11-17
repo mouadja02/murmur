@@ -1071,7 +1071,9 @@ export class Pipeline {
       session.writeSystemPrompt(composed);
       if (ctx?.block && cfg.logMode === 'full') session.writeContext(ctx.block);
       timings.activeSkills = activeSkillIds.join(',') || '(none)';
-      if (ctx?.window) timings.app = ctx.window.processName;
+      // The app name is cut from the window title, so it can be part of a
+      // document name: content, kept out of metadata-only logs like the rest.
+      if (ctx?.window && cfg.logMode === 'full') timings.app = ctx.window.processName;
       if (ctx?.images.length) timings.images = ctx.images.length;
       const rStart = Date.now();
       const response = await provider.refineStream(

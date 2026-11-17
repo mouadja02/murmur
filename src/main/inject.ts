@@ -17,7 +17,15 @@ export interface InjectOptions {
   injectionMethod: InjectionMethod;
 }
 
-export async function pasteAtCursor(text: string, opts: InjectOptions): Promise<void> {
+/**
+ * `noteOwnWrite` is told about each text Murmur puts on the clipboard (the
+ * prompt, and the restored previous text) before it is written.
+ */
+export async function pasteAtCursor(
+  text: string,
+  opts: InjectOptions,
+  noteOwnWrite: (text: string) => void,
+): Promise<void> {
   await injectGeneratedText(text, opts, {
     clipboard,
     keyboard,
@@ -26,6 +34,7 @@ export async function pasteAtCursor(text: string, opts: InjectOptions): Promise<
       v: Key.V,
     },
     sleep,
+    noteOwnWrite,
     logger: console,
   });
 }

@@ -24,6 +24,13 @@ listed on the [GitHub releases page](https://github.com/mouadja02/murmur/release
   uses the overlay app's MCP endpoint) now names the missing command and how to fix it, instead of
   `spawn sox ENOENT`. The overlay app warns about a missing recorder at startup, and the README
   and integration guides say that its `murmur_record` needs the recorder too.
+- With `clipboardRetention: restore-previous` and clipboard context on, the text Murmur puts back
+  after a paste is no longer recorded as a new copy. Before, a password-manager entry that had been
+  skipped as concealed, or an entry older than 5 minutes, could come back as clipboard context and
+  be sent to the model with the next dictation.
+- In the default `metadata-only` log mode, `timings.json` no longer contains an `app` field. That
+  name is cut from the active window's title (it can be part of a document name), so it is now
+  written only in `full` mode. The README no longer calls it a process name.
 
 ## [1.0.1] - 2026-10-26
 

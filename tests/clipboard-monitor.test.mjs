@@ -57,6 +57,20 @@ describe('clipboard context monitor', () => {
     monitor.stop();
   });
 
+  it('keeps earlier own writes when the same text is announced again and again', async () => {
+    // With restore-previous every paste also announces the same restored text;
+    // that must not push the earlier pasted prompts out of the own-writes list.
+    const { clip, monitor } = setup();
+    await monitor.start();
+    monitor.ignore('FIRST PROMPT');
+    for (let i = 0; i < 20; i++) monitor.ignore('restored text');
+    clip.copy('FIRST PROMPT');
+    await monitor.poll();
+    assert.deepEqual(monitor.history(5), []);
+
+    monitor.stop();
+  });
+
   it('does not record an entry the platform marks as concealed', async () => {
     const { clip, monitor } = setup();
     await monitor.start();
