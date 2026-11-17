@@ -1,6 +1,11 @@
 import { getActiveWindow } from '@nut-tree-fork/nut-js';
 
 export interface WindowContext {
+  /**
+   * The app name, taken from the end of the window title ("report - Notepad"
+   * gives "Notepad"), not looked up from the OS. A title that ends in a file
+   * name yields that name, so treat it as window-title content.
+   */
   processName: string;
   windowTitle: string;
   os: string;

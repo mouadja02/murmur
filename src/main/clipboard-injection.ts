@@ -17,6 +17,12 @@ export interface ClipboardInjectionDeps {
     v: unknown;
   };
   sleep: (ms: number) => Promise<void>;
+  /**
+   * Told about every text this module is about to put on the clipboard (the
+   * generated prompt and, with `restore-previous`, the text it puts back), so
+   * the clipboard-context monitor does not record Murmur's own writes as copies.
+   */
+  noteOwnWrite: (text: string) => void;
   logger?: Pick<Console, 'warn'>;
 }
 
@@ -26,8 +32,10 @@ export interface ClipboardInjectionOptions {
   injectionMethod: InjectionMethod;
 }
 
-async function writeGeneratedToClipboard(clipboard: ClipboardAdapter, text: string): Promise<void> {
-  await clipboard.writeText(text);
+/** Every clipboard write goes through here, announced before it lands. */
+async function writeOwnText(deps: ClipboardInjectionDeps, text: string): Promise<void> {
+  deps.noteOwnWrite(text);
+  await deps.clipboard.writeText(text);
 }
 
 async function pasteViaClipboard(
@@ -36,13 +44,13 @@ async function pasteViaClipboard(
   deps: ClipboardInjectionDeps,
 ): Promise<void> {
   const previous = await deps.clipboard.readText();
-  await writeGeneratedToClipboard(deps.clipboard, text);
+  await writeOwnText(deps, text);
 
   await deps.sleep(30);
 
   const written = await deps.clipboard.readText();
   if (written !== text) {
-    if (opts.clipboardRetention === 'restore-previous') await deps.clipboard.writeText(previous);
+    if (opts.clipboardRetention === 'restore-previous') await writeOwnText(deps, previous);
     throw new Error('clipboard write verification failed');
   }
 
@@ -50,7 +58,9 @@ async function pasteViaClipboard(
     await deps.keyboard.type(deps.keys.pasteModifier, deps.keys.v);
     await deps.sleep(opts.clipboardRestoreDelayMs);
   } finally {
-    if (opts.clipboardRetention === 'restore-previous') await deps.clipboard.writeText(previous);
+    // Putting the previous text back is Murmur's write too: seen as a fresh
+    // copy, a concealed or expired entry would become clipboard context again.
+    if (opts.clipboardRetention === 'restore-previous') await writeOwnText(deps, previous);
   }
 }
 
@@ -60,7 +70,7 @@ export async function injectGeneratedText(
   deps: ClipboardInjectionDeps,
 ): Promise<void> {
   if (opts.injectionMethod === 'type') {
-    await writeGeneratedToClipboard(deps.clipboard, text);
+    await writeOwnText(deps, text);
     await deps.keyboard.type(text);
     return;
   }
@@ -70,7 +80,7 @@ export async function injectGeneratedText(
   } catch (err) {
     if (opts.injectionMethod !== 'auto') throw err;
     deps.logger?.warn('[inject] clipboard paste failed, falling back to keyboard.type:', err);
-    await writeGeneratedToClipboard(deps.clipboard, text);
+    await writeOwnText(deps, text);
     await deps.keyboard.type(text);
   }
 }

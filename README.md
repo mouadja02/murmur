@@ -317,8 +317,8 @@ Everything here is **opt-in and off by default**. Context is captured **when the
 
 | Setting | What is captured | Notes |
 | --- | --- | --- |
-| `contextCapture` | The active app's process name, its window title and the OS | Read from the OS at the start of each capture; your OS may ask for a permission the first time. |
-| `clipboardContextEntries` | The last N things you copied (0 to 5; 0 turns it off and clears what was collected) | Each entry is cut to 500 characters. Entries older than 5 minutes are not shared, and entries a password manager marks as concealed are skipped. Text Murmur pasted itself is not fed back. |
+| `contextCapture` | The active app's name, its window title and the OS | Read from the OS at the start of each capture; your OS may ask for a permission the first time. The app name is the last part of the window title ("report - Notepad" gives "Notepad"), not a process looked up from the OS, so for a title ending in a file name it is that file name. |
+| `clipboardContextEntries` | The last N things you copied (0 to 5; 0 turns it off and clears what was collected) | Each entry is cut to 500 characters. Entries older than 5 minutes are not shared, and entries a password manager marks as concealed are skipped. Text Murmur pasted itself is not fed back, nor is the text `restore-previous` puts back after a paste. |
 | `screenshotContext` | A screenshot of the primary screen (JPEG, at most 1920×1080) | Only useful with a vision-capable model; your OS may ask for screen-recording permission. |
 
 **Refine last** and **Retry** resend only what these settings allow *now*, and nothing if you switched provider since the capture.
@@ -331,7 +331,7 @@ Everything here is **opt-in and off by default**. Context is captured **when the
 ]
 ```
 
-In `full` log mode the composed context block is written to `context.txt` in the session folder.
+In `full` log mode the composed context block is written to `context.txt` in the session folder, and `timings.json` names the app. `metadata-only` writes neither, since the app name comes from the window title.
 
 ---
 

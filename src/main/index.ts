@@ -177,9 +177,9 @@ async function foregroundWindowForGuard(): Promise<string | null> {
 }
 
 async function injectText(text: string, opts: InjectOptions): Promise<void> {
-  // Our own paste must not show up as "clipboard context" next time.
-  ignoreClipboardText(text);
-  await pasteAtCursor(text, opts);
+  // What Murmur writes to the clipboard (the prompt, and with restore-previous
+  // the text it puts back) must not show up as "clipboard context" next time.
+  await pasteAtCursor(text, opts, ignoreClipboardText);
 }
 
 function persistOverlayVisibility(visible: boolean): void {

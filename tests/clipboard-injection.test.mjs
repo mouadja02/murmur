@@ -23,6 +23,7 @@ function fakeDeps({ initialClipboard = 'previous', failVerification = false } = 
       },
       keys: { pasteModifier: 'Ctrl', v: 'V' },
       sleep: async () => {},
+      noteOwnWrite: () => {},
       logger: { warn: () => {} },
     },
     getClipboard: () => clipboardText,
@@ -136,6 +137,7 @@ describe('clipboard injection with an async clipboard (Electron 44+)', () => {
         },
         keys: { pasteModifier: 'Ctrl', v: 'V' },
         sleep: async () => {},
+        noteOwnWrite: () => {},
         logger: { warn: () => {} },
       },
     };

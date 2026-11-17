@@ -75,6 +75,12 @@ export function createClipboardMonitor(
 
   return {
     ignore(text: string): void {
+      // Empty text is never recorded anyway. A text already listed moves to
+      // the newest slot, so a clipboard restored after every paste does not
+      // push the pasted prompts out of the list.
+      if (!text) return;
+      const at = ownWrites.indexOf(text);
+      if (at !== -1) ownWrites.splice(at, 1);
       ownWrites.push(text);
       if (ownWrites.length > MAX_OWN_WRITES) ownWrites.shift();
     },
