@@ -6,6 +6,8 @@ listed on the [GitHub releases page](https://github.com/mouadja02/murmur/release
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-17
+
 ### Fixed
 
 - Holding the push-to-talk hotkey while a dictation is still being processed now queues the next
@@ -31,6 +33,10 @@ listed on the [GitHub releases page](https://github.com/mouadja02/murmur/release
 - In the default `metadata-only` log mode, `timings.json` no longer contains an `app` field. That
   name is cut from the active window's title (it can be part of a document name), so it is now
   written only in `full` mode. The README no longer calls it a process name.
+
+### Changed
+
+- Updated Electron to 45.3.1, the MCP SDK to 1.32.2, dotenv to 18.0.10 and Biome to 2.6.4.
 
 ## [1.0.1] - 2026-10-26
 
