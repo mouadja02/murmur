@@ -12,7 +12,9 @@ Use Murmur as a **Streamable HTTP** MCP server on loopback. Any MCP client that 
   - **Windows / macOS:** SoX (`sox` on `PATH`)
   - **Linux:** ALSA utils (`arecord` on `PATH`)
 
-Override defaults:
+The overlay app serves the same endpoint on `mcpPort` (default 7332), and its `murmur_record` uses this recorder command too, not the overlay mic. `murmur_transcribe` and `murmur_refine` need no recorder.
+
+Override defaults (quote a path that contains spaces; backslashes are kept):
 
 ```bash
 murmur serve --recorder-command "sox -q -d -r 16000 -c 1 -b 16 -e signed-integer -t raw -"
@@ -95,7 +97,7 @@ A `404` on `/mcp` usually means Murmur is not running or the port is wrong.
 
 | Symptom | Fix |
 | --- | --- |
-| `headless recorder command not found: sox` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `MURMUR_RECORDER_COMMAND` |
+| `headless recorder command not found: sox` at startup, or `recorder command not found: sox` from `murmur_record` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `MURMUR_RECORDER_COMMAND` |
 | `winget` says SoX is installed, but `sox --version` fails | The portable install may be incomplete or not linked into `PATH`. Run `winget uninstall --id ChrisBagwell.SoX -e`, reinstall it, restart the terminal, and verify `sox --version` |
 | Port in use | Change `--mcp-port` or free the port |
 | `file_path must be absolute` | Pass a full path to `murmur_transcribe` |

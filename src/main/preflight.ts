@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { splitCommandLine } from './audio/command.js';
+import { recorderNotFoundMessage, splitCommandLine } from './audio/command.js';
 import type { ResolvedConfig } from './config/index.js';
 import { commandAvailable, whisperCliAvailable } from './platform.js';
 import type { LlmProvider } from './providers/index.js';
@@ -54,20 +54,26 @@ export async function runPreflight(
   }
 
   if (opts.requireRecorder) {
-    try {
-      const [recorderBin] = splitCommandLine(cfg.recorderCommand);
-      if (!commandAvailable(recorderBin)) {
-        errors.push(
-          `headless recorder command not found: ${recorderBin}.\n` +
-            `  Fix: install SoX on Windows/macOS or alsa-utils on Linux,\n` +
-            `       or pass --recorder-command, or set MURMUR_RECORDER_COMMAND\n` +
-            `       (config.json's recorderCommand, if present, takes precedence over the env var)`,
-        );
-      }
-    } catch (err) {
-      errors.push(`invalid recorder command: ${(err as Error).message}`);
-    }
+    const recorderProblem = checkRecorderCommand(cfg.recorderCommand);
+    if (recorderProblem) errors.push(recorderProblem);
   }
 
   return { ok: errors.length === 0, messages: errors };
+}
+
+/**
+ * Null when the recorder command parses and its executable exists; otherwise
+ * what is wrong and how to fix it. `murmur serve` refuses to start on it; the
+ * overlay only warns, because the recorder serves nothing but MCP `murmur_record`
+ * there (dictation uses the overlay's own microphone capture).
+ */
+export function checkRecorderCommand(recorderCommand: string): string | null {
+  let recorderBin: string;
+  try {
+    [recorderBin] = splitCommandLine(recorderCommand);
+  } catch (err) {
+    return `invalid recorder command: ${(err as Error).message}`;
+  }
+  if (commandAvailable(recorderBin)) return null;
+  return `headless ${recorderNotFoundMessage(recorderBin)}`;
 }

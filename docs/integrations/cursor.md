@@ -12,7 +12,9 @@ Connect Cursor to a local Murmur MCP server so Agent can record voice, transcrib
   - **Windows / macOS:** [SoX](http://sox.sourceforge.net/) (`sox` on `PATH`)
   - **Linux:** ALSA utils (`arecord` on `PATH`)
 
-Override the recorder with `--recorder-command` or `MURMUR_RECORDER_COMMAND` if your binary lives elsewhere.
+Override the recorder with `--recorder-command` or `MURMUR_RECORDER_COMMAND` if your binary lives elsewhere (quote a path that contains spaces; backslashes are kept).
+
+The recorder is also needed when you point the agent at the **overlay app's** MCP endpoint (`mcpPort`, default 7332) instead of `murmur serve`: its `murmur_record` uses the same command, not the overlay mic. `murmur_transcribe` and `murmur_refine` need no recorder.
 
 ## Start Murmur
 
@@ -76,7 +78,7 @@ In Agent chat, ask Cursor to use Murmur tools explicitly, e.g. *"Call murmur_rec
 | Symptom | Fix |
 | --- | --- |
 | Server shows disconnected | Confirm `murmur serve` is running; check **Settings → Tools & MCP** |
-| `headless recorder command not found: sox` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `--recorder-command` |
+| `headless recorder command not found: sox` at startup, or `recorder command not found: sox` from `murmur_record` | Windows: run `winget install --id ChrisBagwell.SoX -e`, restart the terminal, then verify `sox --version`. Otherwise install SoX / `arecord`, or set `--recorder-command` |
 | Tools missing after edit | Restart Cursor — MCP config is loaded at startup |
 | `pipeline is busy` | Wait for the current recording/processing to finish. If an agent left a recording open, call `murmur_stop_record` |
 

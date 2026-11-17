@@ -56,7 +56,7 @@ import {
 } from './overlay/window.js';
 import { Pipeline } from './pipeline.js';
 import { isPathInside } from './platform.js';
-import { runPreflight } from './preflight.js';
+import { checkRecorderCommand, runPreflight } from './preflight.js';
 import {
   findMurmurUrlInArgv,
   handleFirstInstanceArgv,
@@ -619,6 +619,14 @@ async function bootstrap(): Promise<void> {
     return;
   }
   console.log('[murmur] preflight ok');
+  // The overlay records with its own microphone capture; only MCP murmur_record
+  // spawns recorderCommand, so a missing recorder is a warning, not a failure.
+  const recorderProblem = checkRecorderCommand(loaded.resolved.recorderCommand);
+  if (recorderProblem) {
+    console.warn(
+      `[murmur] MCP murmur_record will fail until this is fixed (dictation is unaffected):\n  ${recorderProblem}`,
+    );
+  }
 
   if (loaded.resolved.prewarm && provider.prewarm) {
     const prewarmFn = provider.prewarm.bind(provider);
