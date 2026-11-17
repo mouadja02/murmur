@@ -166,6 +166,23 @@ describe('CommandAudioRecorder', () => {
     );
   });
 
+  // #77 end to end: a quoted executable path (on Windows CI, node.exe under
+  // "C:\Program Files\..." with backslashes and spaces) launches for real. The
+  // fake recorder is Node itself, writing a few PCM bytes and exiting.
+  it('launches a recorder given as a quoted full path (real spawn)', async () => {
+    const script = 'process.stdout.write(Buffer.alloc(64, 1))';
+    const recorder = new CommandAudioRecorder({
+      commandLine: `"${process.execPath}" -e "${script}"`,
+    });
+    const exited = new Promise((resolve) => recorder.onUnexpectedExit(resolve));
+
+    await recorder.start();
+    await exited;
+    const out = Buffer.from(await recorder.stop());
+
+    assert.equal(out.length, 64);
+  });
+
   it('passes other spawn errors through unchanged', async () => {
     const original = Object.assign(new Error('spawn recorder EACCES'), { code: 'EACCES' });
     const recorder = new CommandAudioRecorder({

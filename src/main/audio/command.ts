@@ -48,6 +48,7 @@ export function splitCommandLine(input: string): string[] {
       continue;
     }
     if (/\s/.test(ch)) {
+      if (!current) tokenWasQuoted = false; // an empty quoted argument ("") ends here
       if (current) {
         const winPath = !tokenWasQuoted && /^[A-Za-z]:\\/.test(current);
         const winPathComplete = winPath && /\.(exe|cmd|bat|com)$/i.test(current);

@@ -60,6 +60,14 @@ describe('splitCommandLine', () => {
     ]);
   });
 
+  it('still joins an unquoted drive path that follows an empty quoted argument', () => {
+    assert.deepEqual(splitCommandLine('rec "" C:\\Program Files\\sox\\sox.exe -q'), [
+      'rec',
+      'C:\\Program Files\\sox\\sox.exe',
+      '-q',
+    ]);
+  });
+
   it('keeps the leading double backslash of a quoted UNC path', () => {
     assert.deepEqual(splitCommandLine('"\\\\audio-host\\tools\\sox.exe" -q'), [
       '\\\\audio-host\\tools\\sox.exe',
