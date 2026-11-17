@@ -6,7 +6,7 @@ listed on the [GitHub releases page](https://github.com/mouadja02/murmur/release
 
 ## [Unreleased]
 
-## [1.0.2] - 2026-11-17
+## [1.0.2] - 2026-11-18
 
 ### Fixed
 
